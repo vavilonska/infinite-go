@@ -213,3 +213,22 @@ test('LAN permits immediate response and free board choice but denies an early r
  const wrongColor=await action(request,path,white.token,{revision,type:'play',id:2,index:2,at:7});assert.equal(wrongColor.status,403);
  await run(black.token,2,2,7);const resumed=await run(black.token,1,4,6);assert.equal(resumed.game.lines[0].history.length,5);assert.ok(resumed.game.turns.B.epoch>1);
 });
+
+test('LAN nigiri keeps seats separate, hides count, lets winner select color and freezes setup',async t=>{
+ const {request}=await host(t);
+ const created=await request('/api/rooms',{method:'POST',body:{colorSetup:'nigiri'}}),a=created.data,path=`/api/rooms/${a.code}`;
+ assert.equal(a.seat,'A');assert.equal(a.role,null);assert.deepEqual(a.setup,{phase:'guess'});
+ const b=(await request(`${path}/join`,{method:'POST',body:{}})).data;assert.equal(b.seat,'B');assert.equal(b.role,null);assert.deepEqual(b.setup,{phase:'guess'});
+ assert.equal((await action(request,path,a.token,{type:'play',id:1,index:0,at:0,revision:b.revision})).status,409);
+ const setup=(token,body)=>request(`${path}/setup`,{method:'POST',token,body});
+ assert.equal((await setup(a.token,{type:'guess',guess:'odd',revision:b.revision})).status,403);
+ const reveal=await setup(b.token,{type:'guess',guess:'odd',revision:b.revision});assert.equal(reveal.status,200);const state=reveal.data.setup;assert.ok(state.count>=1&&state.count<=20);assert.equal(state.winner,state.count%2?'B':'A');
+ assert.equal((await setup(b.token,{type:'guess',guess:'even',revision:reveal.data.revision})).status,422);
+ const winner=state.winner==='A'?a:b,loser=state.winner==='A'?b:a;
+ assert.equal((await setup(loser.token,{type:'choose',color:'W',revision:reveal.data.revision})).status,422);
+ const chosen=await setup(winner.token,{type:'choose',color:'W',revision:reveal.data.revision});assert.equal(chosen.status,200);assert.equal(chosen.data.role,'W');
+ const black=(await request(path,{token:loser.token})).data;assert.equal(black.role,'B');assert.equal((await request(path,{token:winner.token})).data.role,'W');
+ const played=await action(request,path,loser.token,{type:'play',id:1,index:0,at:0,revision:black.revision});assert.equal(played.status,200);
+ assert.equal((await setup(winner.token,{type:'choose',color:'B',revision:played.data.revision})).status,409);
+});
+test('manual LAN color choice can give the host White',async t=>{const {request}=await host(t);const a=(await request('/api/rooms',{method:'POST',body:{hostColor:'W',colorSetup:'manual'}})).data;assert.equal(a.role,'W');assert.equal((await request(`/api/rooms/${a.code}/join`,{method:'POST',body:{}})).data.role,'B');});

@@ -29,7 +29,7 @@ npm start
 Open `http://localhost:8000`. Choose **9 / 13 / 19** lines (default 9), with configurable komi (default 7.5). The initial branching threshold defaults to **1/512**; options include 1/4 through 1/512, a custom negative integer power of two, or unlimited.
 
 - Same screen: share the page, tap a position to preview, then confirm the move
-- LAN: create a room; the other device opens the host's LAN address and joins directly if only one room is available. With multiple rooms, enter the six-character code. The creator plays Black, the joining player White. See the [LAN guide](docs/LAN.md)
+- LAN: create a room; the other device opens the host's LAN address and joins directly if only one room is available. With multiple rooms, enter the six-character code. In manual mode the host chooses Black or White. Alternatively, use a nigiri room: the joining player guesses parity and the winner chooses a color. See the [LAN guide](docs/LAN.md)
 - Offline same-screen play without rooms: serve statically with `python3 -m http.server 8000`, or use `HOST=127.0.0.1 npm start` to listen only on the local machine (PowerShell: `$env:HOST='127.0.0.1'`)
 - Do not open the HTML file directly: ES modules need an HTTP server
 - Export JSON before leaving. Refreshing loses an unexported same-screen game. LAN rooms live in server memory and disappear when the server stops. Exports exclude reconnection credentials
@@ -39,6 +39,13 @@ Open `http://localhost:8000`. Choose **9 / 13 / 19** lines (default 9), with con
 Distant friends may configure a virtual LAN such as ZeroTier themselves; see the [remote-play guide](docs/REMOTE-PLAY.md). The page does not integrate a VPN, create networks or change security settings.
 
 The board-side move-number toggle labels surviving stones with their actual move numbers (passes count; dispute-resume events do not). History previews show only that position; captured numbers disappear and reoccupied points receive new numbers. The branch-origin text retains its creation move, new/original coordinates and parent ID (coordinates skip I; passes are labeled as passes). A gold ring marks the branch move only while that stone survives; the teal/purple marker identifies the latest move.
+
+## Optional nigiri and color selection
+
+- Before same-screen play, start nigiri to generate and hide a uniformly random integer from 1 to 20. Guess odd/even, then reveal the number and that many stones. A correct guess gives the guesser first choice of color; otherwise the other player chooses. Same-screen results are an agreement between players, not an operator restriction
+- For remote play, choose nigiri before creating the room. Players initially occupy seats A (host) and B (joining player). The server generates the hidden count before B guesses. The winner chooses Black or White; the other seat receives the opposite color. Moves are blocked until selection is complete. Manual host-color selection remains available
+- In human/AI mode the human guesses and can choose a color after winning. If the AI wins, its initial policy chooses Black. AI/AI can skip nigiri and use its existing Black/White setup
+- Cryptographic randomness and rejection sampling avoid modulo bias. Repeated guesses and color reassignment after play starts are rejected. LAN responses do not reveal the count early, but participants must trust the host server; this is not a cryptographic commitment or anti-cheat system. Temporary same-screen nigiri results are not included in game JSON exports
 
 ## Branching
 

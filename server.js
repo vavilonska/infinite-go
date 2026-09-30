@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
+import {createNigiri,revealNigiri,chooseNigiri,publicNigiri} from './nigiri.js';
 import { createGame, lineById, replay, play, toggleDead, approveScore, resume, prune } from './engine.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -13,6 +14,7 @@ const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/nigiri.js', ['nigiri.js', 'text/javascript; charset=utf-8']],
   ['/annotations.js', ['annotations.js', 'text/javascript; charset=utf-8']],
   ['/LICENSE', ['LICENSE', 'text/plain; charset=utf-8']],
   ...['icon.png','favicon.png','apple-touch-icon.png'].map(name=>['/assets/'+name,['assets/'+name,'image/png']]),
@@ -63,15 +65,15 @@ function newCode() {
 function authenticate(req, room) {
   const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
   if (!token) reject(401, 'A reconnect token is required');
-  for (const role of ['B', 'W']) {
+  for (const role of ['A', 'B']) {
     const expected = room.tokens[role];
     if (expected && timingSafeEqual(Buffer.from(token), Buffer.from(expected))) return role;
   }
   reject(401, 'Invalid reconnect token');
 }
-const snapshot = (room, role) => ({
-  code: room.code, role, revision: room.revision, game: room.game,
-  players: { B: Boolean(room.tokens.B), W: Boolean(room.tokens.W) },
+const snapshot = (room, seat) => ({
+  code: room.code, seat, role:room.roles?.[seat]??null, revision: room.revision, game: room.game, setup:publicNigiri(room.nigiri),
+  players: { B: Boolean(room.tokens.A), W: Boolean(room.tokens.B) },
 });
 
 /** Creates an unbound server. Importing this file never opens a listening port. */
@@ -100,12 +102,14 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       if (path === '/api/rooms' && req.method === 'GET') {
         for (const [code, room] of rooms) if (Date.now() - room.touched > roomTtlMs) rooms.delete(code);
-        sendJson(res, 200, { rooms: [...rooms.values()].map(room => ({ code: room.code, players: { B: Boolean(room.tokens.B), W: Boolean(room.tokens.W) } })) });
+        sendJson(res, 200, { rooms: [...rooms.values()].map(room => ({ code: room.code, players: { B: Boolean(room.tokens.A), W: Boolean(room.tokens.B) } })) });
         return;
       }
       if (path === '/api/rooms' && req.method === 'POST') {
         const body = await readJson(req);
-        fields(body, ['size', 'komi', 'branchLimitExponent','pruningMode','compensationC']);
+        fields(body, ['size', 'komi', 'branchLimitExponent','pruningMode','compensationC','colorSetup','hostColor']);
+        if(body.colorSetup!==undefined&&!['manual','nigiri'].includes(body.colorSetup))reject(400,'Invalid color setup');
+        if(body.hostColor!==undefined&&!['B','W'].includes(body.hostColor))reject(400,'Invalid host color');
         let game;
         try { game = createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9,{pruningMode:Object.hasOwn(body,'pruningMode')?body.pruningMode:'none',compensationC:Object.hasOwn(body,'compensationC')?body.compensationC:'32'}); } catch (error) { reject(400, error.message); }
         if (body.size === null || body.komi === null) reject(400, 'Size and komi cannot be null');
@@ -114,12 +118,12 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
         let code;
         do { code = newCode(); } while (rooms.has(code));
         const token = randomBytes(32).toString('base64url');
-        const room = { code, game, revision: 0, tokens: { B: token, W: null }, touched: Date.now() };
+        const room = { code, game, revision: 0, tokens: { A: token, B: null }, roles:body.colorSetup==='nigiri'?null:{A:body.hostColor??'B',B:body.hostColor==='W'?'B':'W'}, nigiri:body.colorSetup==='nigiri'?createNigiri():null, touched: Date.now() };
         rooms.set(code, room);
-        sendJson(res, 201, { ...snapshot(room, 'B'), token });
+        sendJson(res, 201, { ...snapshot(room, 'A'), token });
         return;
       }
-      const match = /^\/api\/rooms\/([A-Za-z2-9]{6})(?:\/(join|actions))?$/.exec(path);
+      const match = /^\/api\/rooms\/([A-Za-z2-9]{6})(?:\/(join|actions|setup))?$/.exec(path);
       if (!match) reject(404, 'Not found');
       const code = match[1].toUpperCase();
       const action = match[2];
@@ -127,20 +131,33 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       if (!room || Date.now() - room.touched > roomTtlMs) { rooms.delete(code); reject(404, 'Room not found or expired'); }
       if (action === 'join' && req.method === 'POST') {
         fields(await readJson(req), []);
-        if (room.tokens.W) reject(409, 'This room already has two players; reconnect with your saved token');
+        if (room.tokens.B) reject(409, 'This room already has two players; reconnect with your saved token');
         const token = randomBytes(32).toString('base64url');
-        room.tokens.W = token;
+        room.tokens.B = token;
         room.revision++;
         room.touched = Date.now();
-        sendJson(res, 200, { ...snapshot(room, 'W'), token });
+        sendJson(res, 200, { ...snapshot(room, 'B'), token });
         return;
       }
-      const role = authenticate(req, room);
+      const seat = authenticate(req, room),role=room.roles?.[seat]??null;
       room.touched = Date.now();
       if (!action && req.method === 'GET') {
-        sendJson(res, 200, snapshot(room, role));
+        sendJson(res, 200, snapshot(room, seat));
         return;
       }
+      if(action==='setup'&&req.method==='POST'){
+        const body=await readJson(req);fields(body,['type','revision','guess','color'],['type','revision']);
+        if(body.revision!==room.revision)reject(409,'State changed; refresh and try again',snapshot(room,seat));
+        if(!room.nigiri||room.game.lines.some(l=>l.history.length))reject(409,'Color setup is unavailable after play starts');
+        if(!room.tokens.B)reject(409,'Wait for the other player to join');
+        try{
+          if(body.type==='guess'){if(seat!=='B')reject(403,'The joining player guesses odd or even');room.nigiri=revealNigiri(room.nigiri,body.guess);}
+          else if(body.type==='choose'){room.nigiri=chooseNigiri(room.nigiri,seat,body.color);room.roles=room.nigiri.roles;}
+          else reject(400,'Unknown setup action');
+        }catch(error){if(error instanceof HttpError)throw error;reject(422,error.message);}
+        room.revision++;sendJson(res,200,snapshot(room,seat));return;
+      }
+      if(!role)reject(409,'Finish guessing and choosing colors before playing');
       if (action !== 'actions' || req.method !== 'POST') reject(405, 'Method not allowed');
       const body = await readJson(req);
       if (!isObject(body) || !['play', 'toggleDead', 'approveScore', 'resume','prune'].includes(body.type)) reject(400, 'Unknown action');
@@ -148,7 +165,7 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       const extras = { play: ['index', 'at'], toggleDead: ['at'], approveScore: ['color'], resume: [],prune:['index'] }[body.type];
       fields(body, [...common, ...extras], [...common, ...(body.type === 'play' ? ['index', 'at'] : body.type === 'toggleDead' ? ['at'] : body.type==='prune'?['index']:[])]);
       if (!Number.isSafeInteger(body.revision) || body.revision < 0 || !Number.isSafeInteger(body.id) || body.id < 1) reject(400, 'Invalid revision or timeline ID');
-      if (body.revision !== room.revision) reject(409, 'State changed; refresh and try again', snapshot(room, role));
+      if (body.revision !== room.revision) reject(409, 'State changed; refresh and try again', snapshot(room, seat));
       if (['play','prune'].includes(body.type) && (!Number.isSafeInteger(body.index) || body.index < 0)) reject(400, 'Invalid history position');
       if (['play', 'toggleDead'].includes(body.type) && !(body.type === 'play' && body.at === null) && (!Number.isInteger(body.at) || body.at < 0 || body.at >= room.game.size ** 2)) reject(400, 'Invalid intersection');
       if (body.type === 'approveScore' && Object.hasOwn(body, 'color') && body.color !== role) reject(403, 'You can only approve your own color');
@@ -169,7 +186,7 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       room.game = game;
       room.revision++;
-      sendJson(res, 200, snapshot(room, role));
+      sendJson(res, 200, snapshot(room, seat));
     } catch (error) {
       if (!res.headersSent) sendJson(res, error.status || 500, { error: error.status ? error.message : 'Internal server error', ...(error.details || {}) });
       else res.end();

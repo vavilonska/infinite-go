@@ -71,3 +71,7 @@ Room creation also accepts `pruningMode` (`none`, `resign`, `komi`) and a decima
 ### Independent player progress
 
 Version 2 game snapshots include `turns.B` and `turns.W`, each with an `epoch` and frozen `pending` leaf IDs. `game.queue` is now a derived sorted list of all currently eligible leaf IDs, not a blocking fixed-order queue. Only the matching authenticated color can act, and only if its pending set still includes that leaf. Branching defers the opponent’s unused source opportunity; ordinary play permits an immediate reply. See [turn rules](TURNS.md).
+
+## 猜先与角色
+
+创建房间前可手动选房主黑白，或选择猜单双。猜先房间先认领 A/B 席位，房主为 A，加入者 B 猜；服务端生成的 1–20 数量在揭晓前不传给客户端。赢家选择任一颜色，另一席自动分配，选色前不能下棋。重连 token 绑定席位，选色后仍使用同一 token。此流程信任房主服务器，不提供加密承诺揭示或公网防作弊。
