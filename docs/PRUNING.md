@@ -4,11 +4,11 @@ Configure one mode at game creation: **none** (default), **resign**, or **komi c
 
 ## Target and turn
 
-On the current round's active leaf, select a historical node and prune its full-history prefix subtree. All current leaves beginning with that exact prefix are included, regardless of their parent ID or board similarity.
+On any leaf eligible for the pruning player's independent round, select a historical node and prune its full-history prefix subtree. All current leaves beginning with that exact prefix are included, regardless of their parent ID or board similarity.
 
-- Only the player whose turn it is on the current source leaf can prune
+- Only the player whose color is to move and who still has that source leaf in their current frozen pending set can prune
 - Root pruning, pruning every unsettled board, and a subtree containing any settled descendant are forbidden
-- Pruning consumes the source's current round action. All pruned IDs leave that round's queue
+- Pruning consumes the source opportunity. All pruned IDs leave both players' pending sets; a player whose pending set becomes empty rolls into their next snapshot
 - The source and every affected leaf are archived with their original histories and weights; the archived history route cannot be recreated through a later branch or ordinary move
 - A preview identifies the affected leaves, total original weight and consequence before confirmation
 

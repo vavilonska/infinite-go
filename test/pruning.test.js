@@ -6,7 +6,7 @@ const moves = points => points.map((at,i)=>at===null?{type:'pass',color:i%2?'W':
 function fixture(mode='komi',C='32',specs=[{points:[0,1,2,3],weight:[1,4]},{points:[0,1,4,5],weight:[1,4]},{points:[2,3,0,1],weight:[1,2]}]) {
   const game=E.createGame(9,7.5,2,{pruningMode:mode,compensationC:C});
   game.lines=specs.map(({points,weight},i)=>({id:i+1,parent:i?1:null,forkAt:i?0:null,weight:E.fraction(...weight),history:moves(points),status:points.slice(-2).every(p=>p===null)?'scoring':'playing',dead:[],approvals:[]}));
-  game.nextId=game.lines.length+1;game.queue=game.lines.filter(l=>l.status==='playing').map(l=>l.id);return game;
+  game.nextId=game.lines.length+1;const ids=game.lines.filter(l=>l.status==='playing').map(l=>l.id);game.turns={B:{epoch:1,pending:[...ids]},W:{epoch:1,pending:[...ids]}};E.ensureRound(game);return game;
 }
 const settle = (game,id) => {E.approveScore(game,id,'B');E.approveScore(game,id,'W');};
 const roundtrip = game => assert.deepEqual(E.importGame(E.exportGame(game)),game);
@@ -42,7 +42,7 @@ test('subtree means full-history prefix, not same board or parent-ID descendants
 });
 
 test('pruning permissions, roots, whole game and settled descendants are rejected atomically',()=>{
-  for(const [mode,source,index,actor] of [['none',1,1,'B'],['komi',2,1,'B'],['komi',1,0,'B'],['komi',1,1,'W'],['komi',1,99,'B']]){
+  for(const [mode,source,index,actor] of [['none',1,1,'B'],['komi',99,1,'B'],['komi',1,0,'B'],['komi',1,1,'W'],['komi',1,99,'B']]){
     const g=fixture(mode),before=E.exportGame(g);assert.throws(()=>E.prune(g,source,index,actor));assert.equal(E.exportGame(g),before);
   }
   const only=E.createGame(9,7.5,9,{pruningMode:'komi'});E.play(only,1,0,0);const before=E.exportGame(only);assert.throws(()=>E.prune(only,1,1,'W'),/every unsettled/);assert.equal(E.exportGame(only),before);
@@ -57,7 +57,7 @@ test('komi renormalizes only unsettled weights and freezes existing settlements 
 
 test('global compensation is inherited by branches and reverses sign for White pruning',()=>{
   const g=fixture();E.prune(g,1,1,'B');const newborn=E.play(g,3,0,6);assert.equal(E.effectiveKomi(g,newborn),23.5);assert.equal(E.effectiveKomi(g,3),23.5);
-  E.play(g,3,4,8);assert.equal(g.queue[0],newborn);const preview=E.pruningInfo(g,newborn,1,'W');assert.deepEqual(preview.komiDelta,E.rational(-16));E.prune(g,newborn,1,'W');assert.equal(E.effectiveKomi(g,3),7.5);assert.deepEqual(g.komiCompensation,E.rational());assert.deepEqual(g.queue,[3]);assert.equal(g.round,3);roundtrip(g);
+  E.play(g,3,4,8);assert.ok(E.canActOn(g,newborn,'W'));const preview=E.pruningInfo(g,newborn,1,'W');assert.deepEqual(preview.komiDelta,E.rational(-16));E.prune(g,newborn,1,'W');assert.equal(E.effectiveKomi(g,3),7.5);assert.deepEqual(g.komiCompensation,E.rational());assert.deepEqual(g.queue,[3]);assert.equal(g.round,3);roundtrip(g);
 });
 
 test('raw compensation boundary is exact and rounds upward to half-points',()=>{
@@ -85,8 +85,8 @@ test('White resignation credits Black and removes descendants from current snaps
 });
 
 test('empty snapshot starts next round only after pruning; newly created leaves wait',()=>{
-  const g=fixture();g.queue=[1,2];E.prune(g,1,1,'B');assert.deepEqual(g.queue,[3]);assert.equal(g.round,2);
-  const h=fixture();h.queue=[1,3];E.prune(h,1,1,'B');assert.deepEqual(h.queue,[3]);assert.equal(h.round,1);
+  const g=fixture();g.turns.B.pending=[1,2];g.turns.W.pending=[1,2];E.ensureRound(g);E.prune(g,1,1,'B');assert.deepEqual(g.queue,[3]);assert.equal(g.round,2);
+  const h=fixture();h.turns.B.pending=[1,3];h.turns.W.pending=[1,3];E.ensureRound(h);E.prune(h,1,1,'B');assert.deepEqual(h.queue,[3]);assert.equal(h.round,1);
 });
 
 test('komi compensation invalidates remaining scoring approvals and supports no playing leaves',()=>{

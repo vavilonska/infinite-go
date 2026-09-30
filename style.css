@@ -5,3 +5,6 @@ a{color:var(--a);text-underline-offset:3px}
 .layout>*{min-width:0}h2,.line-item span{overflow-wrap:anywhere}.line-item span{min-width:0}
 button.danger{background:#442539;border-color:#bc718d;color:#ffd6e4}#compensationHint{flex-basis:100%}#customC{width:95px}#archives p{margin-top:8px}#archivePanel{margin:12px 0}#historyLabel{overflow-wrap:anywhere}
 [hidden]{display:none!important}
+/* Turn hints combine stone symbols and text; red never carries meaning alone. */
+.line-item.turn-waiting{border-color:#a85e70;background:#362133}.line-item .turn-label{display:inline-flex;align-items:center;gap:5px}.stone-symbol{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid #8390a8;vertical-align:middle}.stone-symbol.black{background:#060c17}.stone-symbol.white{background:#fff9ed;border-color:#fff9ed}.turn-waiting small{color:#ffc2cf}#tree .node.waiting rect{stroke:#dd7b92;fill:#342039}#tree .node.black-ready rect{stroke:#94a2b7}#tree .node.white-ready rect{stroke:#fff9ed}
+.turn.turn-waiting{color:#ffc2cf;border-color:#a85e70;background:#362133}.turn{max-width:50%;overflow-wrap:anywhere}.eyebrow#round{letter-spacing:.6px;display:block;line-height:1.8}

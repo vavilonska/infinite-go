@@ -104,11 +104,11 @@ test('historical branches preserve the authenticated color and authoritative tim
   assert.equal(result.data.game.lines.length, 2);
   assert.deepEqual(result.data.game.lines[1].history, [{ type: 'play', color: 'B', at: 2 }]);
   assert.deepEqual(result.data.game.lines.map(line => line.weight), [{ n: '1', d: '2' }, { n: '1', d: '2' }]);
-  const skipQueue = await action(request, path, white.token, { revision: result.data.revision, type: 'play', id: 2, index: 1, at: 3 });
-  assert.equal(skipQueue.status, 422);
+  const freeChoice = await action(request, path, white.token, { revision: result.data.revision, type: 'play', id: 2, index: 1, at: 3 });
+  assert.equal(freeChoice.status, 200);result=freeChoice;
   result = await action(request, path, black.token, { revision: result.data.revision, type: 'play', id: 1, index: 2, at: 3 });
   assert.equal(result.status, 200);
-  result = await action(request, path, white.token, { revision: result.data.revision, type: 'play', id: 2, index: 1, at: 4 });
+  result = await action(request, path, white.token, { revision: result.data.revision, type: 'play', id: 1, index: 3, at: 4 });
   assert.equal(result.status, 200);
   assert.equal(result.data.game.lines[1].history[1].color, 'W');
 });
@@ -205,4 +205,11 @@ test('authoritative pruning enforces roles, ledger compensation, and archived ro
  assert.equal((await action(request,path,white.token,{revision,type:'prune',id:1,index:1})).status,422);
  const pruned=await run(black.token,{type:'prune',id:1,index:1});assert.deepEqual(pruned.game.komiCompensation,{n:'4',d:'1'});assert.equal(pruned.game.lines.length,1);assert.deepEqual(pruned.game.lines[0].weight,{n:'1',d:'1'});assert.equal(pruned.game.archives.length,1);
  await run(white.token,{type:'play',id:2,index:1,at:3});const blocked=await action(request,path,black.token,{revision,type:'play',id:2,index:0,at:0});assert.equal(blocked.status,422);assert.match(blocked.data.error,/archived/);
+});
+test('LAN permits immediate response and free board choice but denies an early repeated source',async t=>{const {request}=await host(t);const {black,white,path}=await twoPlayers(request);let revision=white.revision;
+ async function run(token,id,index,at){const r=await action(request,path,token,{revision,type:'play',id,index,at});assert.equal(r.status,200,JSON.stringify(r.data));revision=r.data.revision;return r.data;}
+ await run(black.token,1,0,0);await run(white.token,1,1,1);await run(black.token,1,0,2);await run(white.token,2,1,3);await run(black.token,1,2,4);await run(white.token,1,3,5);
+ const denied=await action(request,path,black.token,{revision,type:'play',id:1,index:4,at:6});assert.equal(denied.status,422);
+ const wrongColor=await action(request,path,white.token,{revision,type:'play',id:2,index:2,at:7});assert.equal(wrongColor.status,403);
+ await run(black.token,2,2,7);const resumed=await run(black.token,1,4,6);assert.equal(resumed.game.lines[0].history.length,5);assert.ok(resumed.game.turns.B.epoch>1);
 });

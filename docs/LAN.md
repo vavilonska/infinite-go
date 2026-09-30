@@ -51,7 +51,7 @@ Actions all require the latest `revision` and a timeline `id`:
 { "revision": 1, "type": "play", "id": 1, "index": 0, "at": 40 }
 ```
 
-- `play`: requires `index` and `at`; use `at: null` to pass. The server checks that the token's player owns the current turn on that timeline. Historical branching still obeys the engine's timeline queue and turn rules.
+- `play`: requires `index` and `at`; use `at: null` to pass. The server checks that the token's player owns the current turn on that timeline. Historical branching obeys independent per-color frozen pending sets and board alternation. The client may choose any eligible line, not just the first ID.
 - `toggleDead`: requires `at`; either player can toggle a dead group during unsettled scoring. This clears both approvals.
 - `approveScore`: approves only the token's own color. An optional `color` field must match that role; clients normally omit it. Both players must approve before a timeline settles.
 - `resume`: either player can resume unsettled scoring to resolve a dispute through play. Settled timelines cannot be resumed.
@@ -67,3 +67,7 @@ Run `node --test test/server.test.js` (or `npm test` for the whole project). Int
 ### Experimental pruning
 
 Room creation also accepts `pruningMode` (`none`, `resign`, `komi`) and a decimal-string `compensationC` (default `32`). These settings are fixed at creation. `POST .../actions` may use `{revision,type:"prune",id,index}`; the authenticated role is the pruning actor. The authoritative engine validates the exact historical subtree, threshold, current turn, frozen settlements and cumulative ledger. See [pruning rules](PRUNING.md). Client-supplied actor, weight or compensation values are not accepted.
+
+### Independent player progress
+
+Version 2 game snapshots include `turns.B` and `turns.W`, each with an `epoch` and frozen `pending` leaf IDs. `game.queue` is now a derived sorted list of all currently eligible leaf IDs, not a blocking fixed-order queue. Only the matching authenticated color can act, and only if its pending set still includes that leaf. Branching defers the opponent’s unused source opportunity; ordinary play permits an immediate reply. See [turn rules](TURNS.md).

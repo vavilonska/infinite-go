@@ -2,7 +2,7 @@
 
 ## Executed
 
-- Node built-in unit tests: captures, suicide, inherited positional superko, pass exemption, source-preserving branches, threshold boundaries (greater / equal / unlimited), legacy save compatibility, duplicate outgoing edges, fixed-round snapshots, exact fractions beyond floating-point range, dead-group scoring approvals, dispute continuation, save validation, distinct histories sharing a board
+- Node built-in unit tests: captures, suicide, inherited positional superko, pass exemption, source-preserving branches, threshold boundaries (greater / equal / unlimited), legacy save compatibility, duplicate outgoing edges, independent per-player snapshots, immediate replies, repeat-turn locking, opposite-branch deadlock prevention, exact fractions beyond floating-point range, dead-group scoring approvals, dispute continuation, save validation, distinct histories sharing a board
 - Local HTTP two-client integration tests: room creation, join, role enforcement, private reconnect token, stale and concurrent actions, scoring approvals, invalid input, cross-site requests, static-file boundaries
 - JavaScript syntax checks for project modules
 
@@ -33,3 +33,5 @@ AI adapter-specific tests and real-engine verification are documented alongside 
 ## Initial real-engine check
 
 The optional bridge was checked with an independently started KataGo v1.18.1 process and a small b6c96 model obtained separately. A 64-visit analysis returned an explicit Black-perspective winrate and a legal move. An HTTP move-generation request after pass / pass / resume also returned a legal move, matching request and node IDs, at 16 visits. These are protocol / legality smoke tests, not a playing-strength evaluation or browser end-to-end test. No executable, model, credential, or raw run log is included.
+
+The deployed pruning update was additionally checked in the cloud desktop browser: the C20 field showed actual 1/32 (3.125%), raw 0.625 points and rounded 1 point; a test prune changed the surviving weight from 1/2 to 1 and effective komi from 7.5 to 17.5, with a +10 ledger entry.

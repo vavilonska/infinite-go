@@ -61,7 +61,7 @@ export function createGame(size=9,komi=7.5,branchLimitExponent=9,options={}) {
   if(![9,13,19].includes(size)||!Number.isFinite(komi)||Math.abs(komi)>100) fail('Use size 9, 13 or 19 and komi between -100 and 100');
   const pruningMode=options.pruningMode===undefined?'none':options.pruningMode,compensationC=parseC(options.compensationC===undefined?'32':options.compensationC).C;
   if(!['none','resign','komi'].includes(pruningMode))fail('Invalid pruning mode');
-  return {format:'infinite-go',version:1,size,komi,branchLimitExponent,pruningMode,compensationC,komiCompensation:zero(),archives:[],nextId:2,round:1,queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
+  return {format:'infinite-go',version:2,size,komi,branchLimitExponent,pruningMode,compensationC,komiCompensation:zero(),archives:[],nextId:2,round:1,turns:{B:{epoch:1,pending:[1]},W:{epoch:1,pending:[1]}},queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
 }
 export function canBranch(game,line) {
   if(game.pruningMode==='komi')return compare(half(line.weight),compensationInfo(game.compensationC).actualMin)>=0;
@@ -70,15 +70,37 @@ export function canBranch(game,line) {
 export const lineById = (game,id) => game.lines.find(l=>l.id===id) || fail('Unknown timeline');
 function exactKomi(game,line) {return line?.status==='settled'&&line.frozenKomi?line.frozenKomi:add(decimalRational(game.komi),game.komiCompensation??zero());}
 export function effectiveKomi(game,lineOrId) {const line=typeof lineOrId==='number'?lineById(game,lineOrId):lineOrId;return numeric(exactKomi(game,line));}
-export function ensureRound(game) { if(!game.queue.length) { const ids=game.lines.filter(l=>l.status==='playing').map(l=>l.id).sort((a,b)=>a-b); if(ids.length) { game.round++;game.queue=ids; } } }
-function consume(game,id) { if(game.queue[0]!==id) fail('Play the highlighted timeline first');game.queue.shift();ensureRound(game); }
+const activeIds = game => game.lines.filter(l=>l.status==='playing').map(l=>l.id).sort((a,b)=>a-b);
+export function canActOn(game,id,color) {
+  const line=game.lines.find(l=>l.id===id);if(!line||line.status!=='playing')return false;
+  const toPlay=replay(line.history,game.size).toPlay,actor=color??toPlay;
+  return actor===toPlay&&(game.turns?.[actor]?.pending??game.queue??[]).includes(id);
+}
+export function eligibleIds(game,color) {return activeIds(game).filter(id=>canActOn(game,id,color));}
+export function turnInfo(game,id) {
+  const line=lineById(game,id),toPlay=replay(line.history,game.size).toPlay,canPlay=canActOn(game,id),waiting=line.status==='playing'&&!canPlay;
+  return {toPlay,canPlay,waiting,reason:line.status==='settled'?'已结算':line.status==='scoring'?'待计分':canPlay?(toPlay==='B'?'● 黑方可下':'○ 白方可下'):`等待${toPlay==='B'?'黑':'白'}方完成本轮其余时间线`};
+}
+export function ensureRound(game) {
+  const active=activeIds(game),set=new Set(active);
+  if(!game.turns)game.turns={B:{epoch:game.round||1,pending:[...active]},W:{epoch:game.round||1,pending:[...active]}};
+  for(const color of ['B','W']) {const turn=game.turns[color];turn.pending=turn.pending.filter(id=>set.has(id));if(!turn.pending.length&&active.length){turn.epoch++;turn.pending=[...active];}}
+  game.round=Math.max(game.turns.B.epoch,game.turns.W.epoch);game.queue=eligibleIds(game);
+}
+function consume(game,id,actor,branching=false) {
+  game.turns[actor].pending=game.turns[actor].pending.filter(n=>n!==id);
+  // A branch leaves the old board on the same color. Defer only the opponent's
+  // unused source opportunity so two opposite-color branches cannot deadlock.
+  if(branching)game.turns[other(actor)].pending=game.turns[other(actor)].pending.filter(n=>n!==id);
+  ensureRound(game);
+}
 function continuationExists(game,target) {
   return game.lines.some(l=>hasPrefix(l.history,target))||(game.archives??[]).some(a=>a.lines.some(l=>hasPrefix(l.history,target)));
 }
 export function play(game,id,index,at=null) {
-  const line=lineById(game,id); if(line.status!=='playing'||game.queue[0]!==id) fail('This timeline is not the current turn');
+  const line=lineById(game,id); if(!canActOn(game,id)) fail('This timeline is not the current turn');
   if(!Number.isInteger(index)||index<0||index>line.history.length) fail('Invalid history position');
-  const current=replay(line.history,game.size),prefix=line.history.slice(0,index),state=replay(prefix,game.size);
+  const branching=index<line.history.length,current=replay(line.history,game.size),prefix=line.history.slice(0,index),state=replay(prefix,game.size);
   if(state.toPlay!==current.toPlay) fail('Choose a historical turn for the current player');
   const move=at===null?{type:'pass',color:state.toPlay}:{type:'play',color:state.toPlay,at};
   const next=apply(state,move,game.size),target=[...prefix,move];
@@ -88,7 +110,7 @@ export function play(game,id,index,at=null) {
   if(index<line.history.length) { if(!canBranch(game,line))fail('分叉权重已达到门槛；此时间线只能继续落子，不能再分叉');line.weight=half(line.weight); result={id:game.nextId++,parent:id,forkAt:index,weight:{...line.weight},history:target,status:'playing',dead:[],approvals:[]};game.lines.push(result); }
   else line.history.push(move);
   if(next.passes===2) result.status='scoring';
-  consume(game,id);return result.id;
+  consume(game,id,current.toPlay,branching);return result.id;
 }
 export function toggleDead(game,id,at) { const line=lineById(game,id);if(line.status!=='scoring') fail('Not in scoring'); const s=replay(line.history,game.size);if(!s.board[at]) return;const stones=group(s.board,at,game.size).stones,set=new Set(line.dead),remove=set.has(at);for(const p of stones) remove?set.delete(p):set.add(p);line.dead=[...set].sort((a,b)=>a-b);line.approvals=[]; }
 export function score(game,id) {
@@ -105,7 +127,7 @@ export function resume(game,id) {const l=lineById(game,id);if(l.status!=='scorin
 export function totals(game) {const t={B:fraction(0),W:fraction(0),draw:fraction(0),unsettled:fraction(0)};for(const l of game.lines){const k=l.status==='settled'?l.result.winner:'unsettled';t[k]=add(t[k],l.weight);}return t;}
 export function pruningInfo(game,sourceId,index,actor) {
   if(!['resign','komi'].includes(game.pruningMode))fail('Pruning is disabled');
-  const source=lineById(game,sourceId);if(source.status!=='playing'||game.queue[0]!==sourceId)fail('Only the current timeline can prune');
+  const source=lineById(game,sourceId);if(!canActOn(game,sourceId))fail('This timeline is not eligible in the current player round');
   if(!['B','W'].includes(actor)||actor!==replay(source.history,game.size).toPlay)fail('Only the current player can prune');
   if(!Number.isInteger(index)||index<1||index>source.history.length)fail('Choose a non-root history node to prune');
   const prefix=source.history.slice(0,index),affected=game.lines.filter(l=>hasPrefix(l.history,prefix));
@@ -125,9 +147,9 @@ export function prune(game,sourceId,index,actor) {
     for(const line of game.lines)if(line.status!=='settled'){line.weight=multiply(line.weight,divide(info.unsettledWeight,info.remainingUnsettledWeight));line.approvals=[];}
     game.komiCompensation=add(before,info.komiDelta);
   }
-  game.archives.push({mode:info.mode,actor,prefix:info.prefix,sourceId,index,lines:archived,subtreeWeight:info.subtreeWeight,komiDelta:info.komiDelta,compensationBefore:before,compensationAfter:{...game.komiCompensation},round:game.round});
+  game.archives.push({mode:info.mode,actor,prefix:info.prefix,sourceId,index,lines:archived,subtreeWeight:info.subtreeWeight,komiDelta:info.komiDelta,compensationBefore:before,compensationAfter:{...game.komiCompensation},round:game.turns?.[actor]?.epoch??game.round});
   // The source's action is consumed; only now may a fresh round include surviving leaves.
-  game.queue=game.queue.filter(id=>!ids.has(id));ensureRound(game);return info;
+  for(const color of ['B','W'])game.turns[color].pending=game.turns[color].pending.filter(id=>!ids.has(id));ensureRound(game);return info;
 }
 export const exportGame = game => JSON.stringify(game,null,2);
 function readRational(q,signed=false) {
@@ -135,7 +157,8 @@ function readRational(q,signed=false) {
   return signed?rational(q.n,q.d):fraction(q.n,q.d);
 }
 export function importGame(text) {
-  const g=JSON.parse(text);if(!g||g.format!=='infinite-go'||g.version!==1)fail('Unsupported save');
+  const g=JSON.parse(text);if(!g||g.format!=='infinite-go'||![1,2].includes(g.version))fail('Unsupported save');
+  const legacyTurns=g.version===1;
   const legacy=g.pruningMode===undefined&&g.compensationC===undefined&&g.komiCompensation===undefined&&g.archives===undefined;
   if(g.branchLimitExponent===undefined)g.branchLimitExponent=null;
   if(legacy){g.pruningMode='none';g.compensationC='32';g.komiCompensation=zero();g.archives=[];}
@@ -165,7 +188,8 @@ export function importGame(text) {
   for(let i=0;i<g.lines.length;i++)for(let j=i+1;j<g.lines.length;j++)if(hasPrefix(g.lines[i].history,g.lines[j].history)||hasPrefix(g.lines[j].history,g.lines[i].history))fail('Overlapping timeline histories');
   const allIds=[...ids,...archiveIds];
   if(sum.n!==sum.d||!Number.isSafeInteger(g.nextId)||g.nextId<=Math.max(...allIds)||!Number.isSafeInteger(g.round)||g.round<1||new Set(g.queue).size!==g.queue.length||g.queue.some(id=>!ids.has(id)||lineById(g,id).status!=='playing'))fail('Invalid round or weights');
-  if(!g.queue.length&&g.lines.some(l=>l.status==='playing'))fail('Missing round queue');return g;
+  if(legacyTurns){const ids=activeIds(g);g.turns={B:{epoch:g.round,pending:[...ids]},W:{epoch:g.round,pending:[...ids]}};g.version=2;ensureRound(g);}
+  else {if(!g.turns||typeof g.turns!=='object')fail('Missing player turns');const active=activeIds(g);for(const color of ['B','W']){const t=g.turns[color];if(!t||!Number.isSafeInteger(t.epoch)||t.epoch<1||!Array.isArray(t.pending)||new Set(t.pending).size!==t.pending.length||t.pending.some(id=>!active.includes(id))||active.length&&!t.pending.length)fail('Invalid player turn snapshot');}if(active.length&&!g.queue.length||g.round!==Math.max(g.turns.B.epoch,g.turns.W.epoch)||JSON.stringify(g.queue)!==JSON.stringify(eligibleIds(g)))fail('Invalid eligible timeline list');}return g;
   function validateLine(l,inArchive) {
     if(!Array.isArray(l.history)||!['playing','scoring','settled'].includes(l.status))fail('Invalid timeline');
     const s=replay(l.history,g.size),resignation=l.result?.reason==='resignation';
