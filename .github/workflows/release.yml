@@ -66,8 +66,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Ensure official SDK build components are present
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify preinstalled official SDK build components
+        run: |
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/aapt2"
       - name: Build unsigned offline-capable APK
         run: bash android/build.sh
       - name: Sign only when the owner has privately configured all signing secrets
