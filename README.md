@@ -1,5 +1,7 @@
 # Infinite Go · 无限围棋
 
+中文 | [English](README.en.md)
+
 **一手棋，一个世界。保留过去，探索另一种下法。**
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Open source under GNU AGPL v3 only (AGPL-3.0-only).
@@ -97,10 +99,6 @@ npm test
 - `test/`：Node 自带测试运行器
 
 当前不含公网匹配、账户系统、排位、云存储、生产级安全保证。欢迎围绕规则边界、移动端触摸体验、性能和更多合法 provider 提交 issue / pull request。
-
-## 相关创意
-
-时间旅行和多分支围棋并非本项目首创，例如社区中的 [5D Go With Multiverse Time Travel 原型讨论](https://www.reddit.com/r/baduk/comments/1ai7o53/)（2024）。本项目独立实现上述明确的历史继承、权重拆分与正式结算规则，没有复制该原型代码，也不主张此规则组合具有唯一性。
 
 ## License
 
