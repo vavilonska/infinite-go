@@ -86,6 +86,10 @@ This is experimental pricing. It does not claim komi is equivalent to win probab
 
 ## Optional AI
 
+The portable desktop launcher opens an owner-only local AI panel. Windows/Linux x64 can review sources, sizes and licenses, approve a verified CPU KataGo + small-model download, then start and connect. macOS requires manual setup/provider connection. Management and the bridge stay loopback-only; phone/LAN guests do not control or share this AI. See [local AI instructions](docs/LOCAL-AI.md).
+
+
+
 The UI offers human/human, human/AI and AI/AI modes. The latter two remain disabled, with empty charts, until a compatible service is connected. Then choose the human color and explicitly start or pause automatic moves.
 
 A lightweight [KataGo bridge and provider protocol](docs/providers.md) is included. Install KataGo and obtain a compatible model/configuration separately. They are not bundled; no keys are embedded. Alternatively, implement the `capabilities / analyze / generateMove / cancel` HTTP protocol for your engine.

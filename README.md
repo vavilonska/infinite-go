@@ -86,6 +86,10 @@ npm start
 
 ## 可选 AI
 
+电脑 portable 版首次自动打开的本机页面提供「本机 AI 设置」：Windows / Linux x64 可查看官方来源、下载大小与许可，确认后下载并校验 CPU KataGo + 小模型，再点启动自动连接。Mac 暂需手动安装 / 接 provider。管理端和 AI bridge 都只在本机，不向手机或房间访客开放。详见[本机 AI](docs/LOCAL-AI.md)。
+
+
+
 页面提供双人、人机、机机三个入口。未连接兼容服务时，后两个入口禁用且图表为空。连接后可选择人类执黑 / 白，主动开始 / 暂停 AI 落子。
 
 内含轻量 [KataGo 桥接与 provider 协议](docs/providers.md)，需要你自行安装 KataGo、取得兼容模型和配置。仓库不打包它们，不内置密钥。也可实现 `capabilities / analyze / generateMove / cancel` HTTP 协议连接自己的引擎。

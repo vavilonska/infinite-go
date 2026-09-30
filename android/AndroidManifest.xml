@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.infinitego.app" android:versionCode="2" android:versionName="0.2.0">
+    package="org.infinitego.app" android:versionCode="3" android:versionName="0.2.1">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- User-entered private LAN hosts use HTTP. The WebView separately confines

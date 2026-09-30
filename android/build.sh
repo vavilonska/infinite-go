@@ -34,7 +34,9 @@ java -cp "$build/test" org.infinitego.app.HostAddressTest
   --manifest "$root/android/AndroidManifest.xml" --java "$build/generated" \
   -A "$build/assets" "$build/resources.zip"
 find "$root/android/src" "$build/generated" -name '*.java' -print > "$build/sources.txt"
-javac -encoding UTF-8 -source 8 -target 8 -bootclasspath "$jar" \
+# Keep the JDK Java 8 bootstrap APIs (including LambdaMetafactory); Android
+# stubs belong on the classpath. D8 below desugars lambdas for Android.
+javac -encoding UTF-8 --release 8 -classpath "$jar" \
   -d "$build/classes" @"$build/sources.txt"
 jar cf "$build/classes.jar" -C "$build/classes" .
 "$tools/d8" --release --min-api 26 --lib "$jar" --output "$build/dex" "$build/classes.jar"

@@ -52,7 +52,7 @@ android/build/infinite-go-unsigned.apk.sha256
 
 `android/build/` 为可重新生成、被 Git 忽略的目录。构建脚本调用根目录 `scripts/build-static.mjs`，当次复制前端产物及同一图标到 APK assets/resources；不维护永久重复的前端源码。APK 不包含生成的 `sw.js`；本地包已离线，避免额外 service-worker 缓存影响升级和请求路由。网页注册失败由共享前端正常忽略。AAPT2 编译资源，`javac` 编译 Java，D8 生成 DEX，`zipalign` 对齐 APK。无需 Gradle、Maven、AndroidX 或第三方运行库。
 
-默认 `minSdk=26`、`targetSdk=36`、版本 `0.2.0` / `versionCode=2`。将来更新发行版时应提升版本号与 `versionCode`；更新前不要改变应用 ID `org.infinitego.app` 或签名身份。`ANDROID_PLATFORM`、`ANDROID_BUILD_TOOLS` 环境变量可选择已安装的编译工具，但不会隐式修改 manifest 的兼容性声明。
+默认 `minSdk=26`、`targetSdk=36`、版本号以 `android/AndroidManifest.xml` 为准。将来更新发行版时应提升版本号与 `versionCode`；更新前不要改变应用 ID `org.infinitego.app` 或签名身份。`ANDROID_PLATFORM`、`ANDROID_BUILD_TOOLS` 环境变量可选择已安装的编译工具，但不会隐式修改 manifest 的兼容性声明。
 
 官方文档：[命令行构建](https://developer.android.com/build/building-cmdline)、[AAPT2](https://developer.android.com/tools/aapt2)、[D8](https://developer.android.com/tools/d8)。
 

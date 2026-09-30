@@ -305,7 +305,7 @@ public final class MainActivity extends Activity {
         }
     }
     private void showHelp() {
-        new AlertDialog.Builder(this).setTitle("无限围棋 · Infinite Go 0.2.0")
+        new AlertDialog.Builder(this).setTitle("无限围棋 · Infinite Go")
             .setMessage("离线同屏不需要网络或账号。上方连接房主可加入电脑上的 LAN / VPN 房间；本应用不运行房主服务器、VPN 或 AI 引擎。\n\n请保持系统 Android WebView / Chrome 更新。游戏在内存中，退出、系统回收或切换前，点页面「导出 JSON」并选保存位置；「导入 JSON」可恢复棋局。没有自动云备份。\n\nAGPL-3.0-only · 源码和许可证在页面底部。")
             .setPositiveButton("知道了", null).show();
     }

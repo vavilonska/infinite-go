@@ -81,3 +81,5 @@ $('guessOdd').onclick=()=>nigiriAction('guess','odd');$('guessEven').onclick=()=
 
 $('openHost').onclick=()=>{try{const url=hostGameURL($('hostAddress').value,$('hostPort').value);if(game.lines.some(l=>l.history.length)&&!confirm('打开房主页面会离开当前对局，请先导出。继续？'))return;location.assign(url);}catch(e){message(e.message,true);}};
 if(STATIC_HOST&&'serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+if(!STATIC_HOST&&location.hash.includes('localAI='))import('./local-ai/panel.js').then(({setupLocalAI})=>setupLocalAI({onConnect:url=>ai.connectURL(url),onDisconnect:()=>ai.disconnect()})).catch(()=>message('本机 AI 设置面板未能加载，请重新打开桌面启动器',true));

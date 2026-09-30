@@ -18,6 +18,10 @@
 
 `SHA256SUMS.txt` 用于核对发行包完整性。Node 下载自官方 HTTPS，构建时核对官方 `SHASUMS256.txt`，其许可证保留在 `runtime/NODE-LICENSE`。项目源码是同一 Release 标签自动提供的 Source code 压缩包。
 
+## 可选本机 AI
+
+Windows / Linux x64 的 portable 启动器会在自动打开的本机浏览器提供所有者设置面板。先查看下载大小、官方来源与许可，确认后下载并核对 SHA256，再点启动并连接。Mac / ARM 暂不提供自动安装。管理端与 AI bridge 仅 loopback，LAN/手机访客不能触发下载、启动或共享房主 AI。手动 provider 入口保留。详见 [LOCAL-AI.md](LOCAL-AI.md)。
+
 ## Android
 
 Android App 内置同一网页引擎，可离线同屏，也可打开房主地址联机；不在手机运行 Node/KataGo。详见 [Android 构建、签名和文件说明](ANDROID.md)。
