@@ -4,11 +4,11 @@ LAN play uses a tiny, dependency-free Node.js server. The host is authoritative:
 
 ## Start a game
 
-1. Install Node.js 22 or newer on one computer and open a terminal in this project.
-2. Run `node server.js`.
+1. Download a runtime-bundled portable desktop package from [Releases](https://github.com/vavilonska/infinite-go/releases), or install Node.js 22+ to run from source.
+2. Run the portable Start script, or `node server.js` from source.
 3. On the host, open `http://localhost:8000`. The terminal also prints local network addresses, such as `http://192.168.1.12:8000`.
 4. On the other device, join the same trusted Wi-Fi or wired network and open the host's printed LAN address in a browser. Use the actual address printed on your host, not the example above.
-5. The first player creates a room and receives Black. Your friend joins as White. If exactly one room has an open seat, the client can find it without a code; otherwise share the six-character room code or a link with `?room=CODE`. Both players must use the host's server, rather than separate static copies of the page.
+5. The host creates a room with manual color choice or optional nigiri; the joining player occupies the other seat. In nigiri, the winner chooses a color before either player can move. If exactly one room has an open seat, the client can find it without a code; otherwise share the six-character room code or a link with `?room=CODE`. Both players must use the host's server, rather than separate static copies of the page.
 
 The server binds to `0.0.0.0:8000` to accept LAN connections. `PORT=8080 node server.js` selects another port. `HOST=127.0.0.1 node server.js` restricts it to the host computer for local-only testing. These environment-variable examples use POSIX shells; Windows PowerShell can use `$env:PORT=8080; node server.js`.
 

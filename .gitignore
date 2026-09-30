@@ -12,3 +12,10 @@ local-*.json
 .DS_Store
 coverage/
 dist/
+releases/
+.build/
+*.jks
+*.keystore
+*.apk
+
+android/build/

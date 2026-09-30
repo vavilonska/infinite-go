@@ -12,3 +12,5 @@ button.danger{background:#442539;border-color:#bc718d;color:#ffd6e4}#compensatio
 .project-icon{width:72px;height:72px;object-fit:contain;border-radius:12px}.board-options{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}.board-options label{cursor:pointer;display:flex;align-items:center;gap:8px}.board-options input{width:20px;height:20px;accent-color:var(--a)}#branchOrigin{margin-bottom:10px}@media(max-width:800px){.project-icon{width:56px;height:56px}.board-options{font-size:13px}}
 
 #nigiriStones{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;max-width:320px}#nigiriStones .stone-symbol{width:22px;height:22px}.nigiri-panel p{margin-top:10px}
+
+.host-entry label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.host-entry input[type=text]{max-width:260px;width:100%;background:#0e1728;color:var(--text);border:1px solid var(--stroke);border-radius:7px;padding:8px}.host-entry input[type=number]{width:95px}.host-entry p{margin-top:10px}

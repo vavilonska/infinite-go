@@ -10,6 +10,10 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 > v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
+## 下载与手机
+
+[Release 发行包](https://github.com/vavilonska/infinite-go/releases)提供带运行时的电脑 portable 包；Android 签名状态和 iPhone 主屏幕使用方式见[发行说明](docs/RELEASES.md)。访客仍可从静态页面输入房主 IP + 端口打开游戏，无需安装 App。
+
 ## 静态网页与自托管后端
 
 在线同屏版：[立即打开 Infinite Go](https://vavilonska.github.io/infinite-go/)。本项目提供 GitHub Pages 静态部署工作流。静态页面可直接同屏双人玩，默认不连接 AI 或房间服务，不会在 GitHub Pages 运行 Node / KataGo。完整部署与接入边界见 [GitHub Pages 说明](docs/PAGES.md)。

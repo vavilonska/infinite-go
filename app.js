@@ -3,6 +3,7 @@ import {boardAnnotations,branchDescription} from './annotations.js';
 import {createTree} from './tree.js';
 import {setupAI} from './ai.js';
 import {createNigiri,revealNigiri,chooseNigiri} from './nigiri.js';
+import {hostGameURL} from './host-address.js';
 import {STATIC_HOST} from './deployment.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 let ai=null,localNigiri=null;
@@ -77,3 +78,6 @@ async function nigiriAction(type,value){try{
  render();}
  }catch(e){message(e.message,true);}}
 $('guessOdd').onclick=()=>nigiriAction('guess','odd');$('guessEven').onclick=()=>nigiriAction('guess','even');$('chooseBlack').onclick=()=>nigiriAction('choose','B');$('chooseWhite').onclick=()=>nigiriAction('choose','W');
+
+$('openHost').onclick=()=>{try{const url=hostGameURL($('hostAddress').value,$('hostPort').value);if(game.lines.some(l=>l.history.length)&&!confirm('打开房主页面会离开当前对局，请先导出。继续？'))return;location.assign(url);}catch(e){message(e.message,true);}};
+if(STATIC_HOST&&'serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});

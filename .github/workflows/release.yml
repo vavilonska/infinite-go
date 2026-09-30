@@ -1,0 +1,120 @@
+name: Build portable desktop and Android release
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+      - 'packaging/**'
+      - 'android/**'
+      - 'scripts/package-desktop.py'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a new versioned Release (leave false for build/signing verification only)
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: infinite-go-release
+  cancel-in-progress: false
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm test
+      - name: Bundle official runtime and smoke-test the packaged server
+        run: python scripts/package-desktop.py --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: releases/*
+          if-no-files-found: error
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure official SDK build components are present
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build unsigned offline-capable APK
+        run: bash android/build.sh
+      - name: Sign only when the owner has privately configured all signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            bash android/sign.sh
+          else
+            echo 'No signing identity configured. Publishing clearly labeled non-installable unsigned APK only.'
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: android/build/infinite-go*.apk
+          if-no-files-found: error
+  publish:
+    if: github.event_name == 'push' || inputs.publish == true
+    needs: [desktop, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish exact-source release with checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+          TAG="v$VERSION"
+          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; bump package.json version rather than replacing published artifacts."
+            exit 1
+          fi
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+          cp docs/RELEASES.md release-notes.md
+          printf '\n\nExact source commit: %s\n' "$COMMIT" >> release-notes.md
+          if [ ! -f release-assets/infinite-go.apk ]; then
+            printf '\nAndroid signing is not configured: the unsigned APK cannot be installed yet. Desktop portable bundles are ready.\n' >> release-notes.md
+          fi
+          gh release create "$TAG" release-assets/* --repo "$REPOSITORY" --target "$COMMIT" --title "Infinite Go $VERSION · portable preview" --notes-file release-notes.md --prerelease

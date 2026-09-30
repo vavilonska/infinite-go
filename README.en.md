@@ -10,6 +10,10 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 > v0.1 prototype: same-screen play, trusted-LAN rooms and optional self-hosted AI. No public matchmaking, accounts, cloud service or bundled AI model. Basic desktop interactions have been checked on the live site; real phones and two-device Wi-Fi still need device testing. See [verification notes](docs/TESTING.md).
 
+## Downloads and mobile
+
+[Releases](https://github.com/vavilonska/infinite-go/releases) provide desktop portable bundles with the runtime included. See [release instructions](docs/RELEASES.md) for Android signing status and iPhone Home Screen installation. Guests can still enter the host IP and port on the static page and play in a browser; an app is optional.
+
 ## Static website and self-hosted backends
 
 [Play Infinite Go](https://vavilonska.github.io/infinite-go/). The repository includes a GitHub Pages workflow. The static site supports same-screen human play without connecting to AI or a room service by default. GitHub Pages does not run Node or KataGo. See [Pages deployment boundaries](docs/PAGES.md).
