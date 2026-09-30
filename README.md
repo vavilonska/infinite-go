@@ -4,11 +4,11 @@
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Source-available under PolyForm Noncommercial 1.0.0.
 
-> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。渲染与真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
+> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
 ## 静态网页与自托管后端
 
-本项目提供 GitHub Pages 静态部署工作流。静态页面可直接同屏双人玩，默认不连接 AI 或房间服务，不会在 GitHub Pages 运行 Node / KataGo。完整部署与接入边界见 [GitHub Pages 说明](docs/PAGES.md)。
+在线同屏版：[立即打开 Infinite Go](https://vavilonska.github.io/infinite-go/)。本项目提供 GitHub Pages 静态部署工作流。静态页面可直接同屏双人玩，默认不连接 AI 或房间服务，不会在 GitHub Pages 运行 Node / KataGo。完整部署与接入边界见 [GitHub Pages 说明](docs/PAGES.md)。
 
 局域网、虚拟局域网和 AI 后端由使用者自行提供。熟人联机请优先直接打开房主 Node 服务所提供的同套页面；不要假设公开 HTTPS 页面能直接连接 HTTP 局域网后端。
 
@@ -56,6 +56,14 @@ npm start
 - UI 同时显示「完成分支 / 总分支」和「已结算权重」，两者含义不同
 
 权重存储为任意精度 `BigInt` 分数的十进制字符串，不依赖浮点数累加。百分比和 AI 图表只是近似展示。
+
+## 可选实验剪枝
+
+新开局选择「不剪枝」（默认）、「认输剪枝」或「贴目补偿剪枝」。选中当前待行叶的一个非根历史节点，操作作用于该完整历史前缀的整个未结算子树，执行前会预览影响。完整规则和公式见 [剪枝规则](docs/PRUNING.md)。
+
+贴目补偿 C 可选 **8 / 32 / 256 / 自定义**，默认 32。自定义输入旁实时显示实际最低新生叶权重、百分比、原始最小补偿及向上半目取整后的值。例如 C20 对应实际 **1/32（3.125%）**、原始 **0.625 目**、取整 **1 目**，而不是直接使用理论 1/40。
+
+这是实验定价，不保证贴目等价于胜率，也不保证反复剪枝与分叉会在有限步内终止。
 
 ## 可选 AI
 

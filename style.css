@@ -3,3 +3,5 @@
 .ai-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.ai-controls label{display:flex;gap:8px;align-items:center}.ai-controls input{background:#0e1728;border:1px solid var(--stroke);color:var(--text);border-radius:8px;padding:10px;min-width:240px}.ai-panel p{margin:12px 0}.charts{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}.charts>div{background:#0b1526;border:1px solid var(--stroke);border-radius:12px;padding:16px}.charts h3{font-size:14px}.charts svg{width:100%;height:110px}.charts p{color:var(--a);font-size:13px}@media(max-width:700px){.charts{grid-template-columns:1fr}.ai-controls{align-items:stretch;flex-direction:column}.ai-controls input{min-width:0;width:100%}#lineCount{font-size:12px}}
 a{color:var(--a);text-underline-offset:3px}
 .layout>*{min-width:0}h2,.line-item span{overflow-wrap:anywhere}.line-item span{min-width:0}
+button.danger{background:#442539;border-color:#bc718d;color:#ffd6e4}#compensationHint{flex-basis:100%}#customC{width:95px}#archives p{margin-top:8px}#archivePanel{margin:12px 0}#historyLabel{overflow-wrap:anywhere}
+[hidden]{display:none!important}

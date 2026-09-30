@@ -198,3 +198,11 @@ test('room configuration validates and retains branch thresholds', async t => {
   assert.equal((await request('/api/rooms', {method:'POST',body:{branchLimitExponent:1}})).status,400);
   for(const exponent of [null,2,9,12]){const result=await request('/api/rooms',{method:'POST',body:{branchLimitExponent:exponent}});assert.equal(result.status,201);assert.equal(result.data.game.branchLimitExponent,exponent);}
 });
+test('authoritative pruning enforces roles, ledger compensation, and archived route protection',async t=>{
+ const {request}=await host(t);const created=await request('/api/rooms',{method:'POST',body:{pruningMode:'komi',compensationC:'8'}});const black=created.data;const white=(await request(`/api/rooms/${black.code}/join`,{method:'POST',body:{}})).data;const path=`/api/rooms/${black.code}`;let revision=white.revision;
+ async function run(token,move){const response=await action(request,path,token,{revision,...move});assert.equal(response.status,200,JSON.stringify(response.data));revision=response.data.revision;return response.data;}
+ await run(black.token,{type:'play',id:1,index:0,at:0});await run(white.token,{type:'play',id:1,index:1,at:1});await run(black.token,{type:'play',id:1,index:0,at:2});
+ assert.equal((await action(request,path,white.token,{revision,type:'prune',id:1,index:1})).status,422);
+ const pruned=await run(black.token,{type:'prune',id:1,index:1});assert.deepEqual(pruned.game.komiCompensation,{n:'4',d:'1'});assert.equal(pruned.game.lines.length,1);assert.deepEqual(pruned.game.lines[0].weight,{n:'1',d:'1'});assert.equal(pruned.game.archives.length,1);
+ await run(white.token,{type:'play',id:2,index:1,at:3});const blocked=await action(request,path,black.token,{revision,type:'play',id:2,index:0,at:0});assert.equal(blocked.status,422);assert.match(blocked.data.error,/archived/);
+});

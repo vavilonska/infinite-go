@@ -63,3 +63,7 @@ Polling about once per second is sufficient for casual LAN play. Keep at most on
 ## Tests
 
 Run `node --test test/server.test.js` (or `npm test` for the whole project). Integration tests open short-lived loopback listeners on random ports; they do not change the firewall or start an externally reachable service. Importing `createServer` from `server.js` creates an unbound server, letting applications and tests choose their own listen address.
+
+### Experimental pruning
+
+Room creation also accepts `pruningMode` (`none`, `resign`, `komi`) and a decimal-string `compensationC` (default `32`). These settings are fixed at creation. `POST .../actions` may use `{revision,type:"prune",id,index}`; the authenticated role is the pruning actor. The authoritative engine validates the exact historical subtree, threshold, current turn, frozen settlements and cumulative ledger. See [pruning rules](PRUNING.md). Client-supplied actor, weight or compensation values are not accepted.

@@ -10,11 +10,11 @@
 
 ## Not yet verified on actual devices
 
-- Desktop Chromium rendering, viewport overflow, mouse drag and visual polish
+- Detailed viewport overflow, mouse / touch drag and full visual polish
 - iOS / Android portrait and landscape, touch targets, pinch zoom, mobile browser compatibility
 - Real two-device Wi-Fi operation, access-point isolation and local firewall behavior
 
-A browser smoke test was attempted during initial development. The available runtime could not launch Chromium due to system socket restrictions; its managed browser also did not permit the local test URL. These are test-environment blockers, not evidence that rendering passes. No screenshot or real-device success is claimed.
+A browser smoke test was attempted during initial development. The available runtime could not launch Chromium due to system socket restrictions; its managed browser also did not permit the local test URL. After GitHub Pages deployment, the managed cloud browser successfully loaded the actual public page and verified preview / confirm moves, history navigation and a source-preserving 1/2 + 1/2 branch. This is a desktop browser smoke test, not a real-mobile or full gesture/layout pass.
 
 ## Manual acceptance checklist
 

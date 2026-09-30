@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
-import { createGame, lineById, replay, play, toggleDead, approveScore, resume } from './engine.js';
+import { createGame, lineById, replay, play, toggleDead, approveScore, resume, prune } from './engine.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -102,9 +102,9 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       if (path === '/api/rooms' && req.method === 'POST') {
         const body = await readJson(req);
-        fields(body, ['size', 'komi', 'branchLimitExponent']);
+        fields(body, ['size', 'komi', 'branchLimitExponent','pruningMode','compensationC']);
         let game;
-        try { game = createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9); } catch (error) { reject(400, error.message); }
+        try { game = createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9,{pruningMode:Object.hasOwn(body,'pruningMode')?body.pruningMode:'none',compensationC:Object.hasOwn(body,'compensationC')?body.compensationC:'32'}); } catch (error) { reject(400, error.message); }
         if (body.size === null || body.komi === null) reject(400, 'Size and komi cannot be null');
         for (const [code, room] of rooms) if (Date.now() - room.touched > roomTtlMs) rooms.delete(code);
         if (rooms.size >= maxRooms) reject(503, 'Room limit reached; restart the host to clear old rooms');
@@ -140,13 +140,13 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       if (action !== 'actions' || req.method !== 'POST') reject(405, 'Method not allowed');
       const body = await readJson(req);
-      if (!isObject(body) || !['play', 'toggleDead', 'approveScore', 'resume'].includes(body.type)) reject(400, 'Unknown action');
+      if (!isObject(body) || !['play', 'toggleDead', 'approveScore', 'resume','prune'].includes(body.type)) reject(400, 'Unknown action');
       const common = ['revision', 'type', 'id'];
-      const extras = { play: ['index', 'at'], toggleDead: ['at'], approveScore: ['color'], resume: [] }[body.type];
-      fields(body, [...common, ...extras], [...common, ...(body.type === 'play' ? ['index', 'at'] : body.type === 'toggleDead' ? ['at'] : [])]);
+      const extras = { play: ['index', 'at'], toggleDead: ['at'], approveScore: ['color'], resume: [],prune:['index'] }[body.type];
+      fields(body, [...common, ...extras], [...common, ...(body.type === 'play' ? ['index', 'at'] : body.type === 'toggleDead' ? ['at'] : body.type==='prune'?['index']:[])]);
       if (!Number.isSafeInteger(body.revision) || body.revision < 0 || !Number.isSafeInteger(body.id) || body.id < 1) reject(400, 'Invalid revision or timeline ID');
       if (body.revision !== room.revision) reject(409, 'State changed; refresh and try again', snapshot(room, role));
-      if (body.type === 'play' && (!Number.isSafeInteger(body.index) || body.index < 0)) reject(400, 'Invalid history position');
+      if (['play','prune'].includes(body.type) && (!Number.isSafeInteger(body.index) || body.index < 0)) reject(400, 'Invalid history position');
       if (['play', 'toggleDead'].includes(body.type) && !(body.type === 'play' && body.at === null) && (!Number.isInteger(body.at) || body.at < 0 || body.at >= room.game.size ** 2)) reject(400, 'Invalid intersection');
       if (body.type === 'approveScore' && Object.hasOwn(body, 'color') && body.color !== role) reject(403, 'You can only approve your own color');
       // Mutate a copy so an invalid action never leaves a partly changed room.
@@ -158,6 +158,7 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
           play(game, body.id, body.index, body.at);
         } else if (body.type === 'toggleDead') toggleDead(game, body.id, body.at);
         else if (body.type === 'approveScore') approveScore(game, body.id, role);
+        else if(body.type==='prune')prune(game,body.id,body.index,role);
         else resume(game, body.id); // Either player may dispute an unsettled score.
       } catch (error) {
         if (error instanceof HttpError) throw error;

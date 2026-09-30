@@ -1,3 +1,4 @@
+import {effectiveKomi} from './engine.js';
 // Small, explicit HTTP protocol. No provider credentials are stored by this app.
 export class HttpGoProvider {
  constructor(baseURL){this.base=new URL(baseURL);if(!['http:','https:'].includes(this.base.protocol))throw new Error('Provider URL must use HTTP(S)');this.controllers=new Map();}
@@ -8,4 +9,4 @@ export class HttpGoProvider {
  async cancel(requestId){this.controllers.get(requestId)?.abort();try{await fetch(new URL('/cancel',this.base),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId})});}catch{}}
  cancelAll(){for(const id of this.controllers.keys())this.cancel(id);}
 }
-export function requestFor(game,line){return {requestId:globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,nodeId:JSON.stringify({id:line.id,history:line.history}),boardSize:game.size,komi:game.komi,rules:'chinese-positional-superko',history:structuredClone(line.history)};}
+export function requestFor(game,line){return {requestId:globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,nodeId:JSON.stringify({id:line.id,history:line.history}),boardSize:game.size,komi:effectiveKomi(game,line),rules:'chinese-positional-superko',history:structuredClone(line.history)};}

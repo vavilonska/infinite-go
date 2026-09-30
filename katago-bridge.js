@@ -33,8 +33,8 @@ export function buildQuery(body, maxVisits = 64) {
   validateFields(body, ['requestId', 'nodeId', 'boardSize', 'komi', 'rules', 'history']);
   if (!validId(body.requestId) || !(typeof body.nodeId === 'string' && body.nodeId.length > 0 && body.nodeId.length <= 512000 || Number.isSafeInteger(body.nodeId))) fail(400, 'Invalid requestId or nodeId');
   if (body.rules !== RULE_NAME) fail(400, 'Unsupported rules');
-  try { createGame(body.boardSize, body.komi); } catch (error) { fail(400, error.message); }
-  if (!Number.isFinite(body.komi) || !Number.isInteger(body.komi * 2)) fail(400, 'KataGo requires integer or half-integer komi');
+  try { createGame(body.boardSize, 0); } catch (error) { fail(400, error.message); }
+  if (!Number.isFinite(body.komi) || Math.abs(body.komi)>400 || !Number.isInteger(body.komi * 2)) fail(400, 'KataGo requires integer or half-integer komi between -400 and 400');
   if (!Array.isArray(body.history) || body.history.length > 10000) fail(400, 'Invalid or oversized history');
   for (const move of body.history) {
     if (!isObject(move)) fail(400, 'Invalid history move');
