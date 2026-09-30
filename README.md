@@ -2,7 +2,7 @@
 
 **一手棋，一个世界。保留过去，探索另一种下法。**
 
-A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Source-available under PolyForm Noncommercial 1.0.0.
+A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Open source under GNU AGPL v3 only (AGPL-3.0-only).
 
 > v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
@@ -104,12 +104,11 @@ npm test
 
 ## License
 
-Copyright © 2026 vavilonska. 本项目使用未经修改的官方 [PolyForm Noncommercial License 1.0.0](LICENSE) 全文，并附 [NOTICE](NOTICE)。
+Copyright © 2026 vavilonska. 本项目以 [GNU Affero General Public License v3](LICENSE) 开源，SPDX 标识为 **AGPL-3.0-only**（仅第 3 版，不含“或任何后续版本”授权）。版权声明见 [NOTICE](NOTICE)。
 
-- 源码公开（source-available），**不是 OSI 定义的开源许可**
-- 可在许可证允许的非商业用途范围内使用、修改和分享；具体允许用途、声明保留、分发等义务以 LICENSE 正文为准
-- 商业用途若不在该许可证许可范围内，须先取得版权所有者另行书面授权；源码公开不转移版权，也不自动授予商业许可
-- 商业授权咨询可通过 [GitHub profile](https://github.com/vavilonska) 或本仓库 issue 联系，勿在公开 issue 中提交敏感商业资料。本仓库不提供自动授权、收费页面或具体商业合同
+- 允许商业和非商业使用、修改与分发；遵守 AGPL 即可，无需另行取得商业许可
+- 保留版权与许可声明，并按许可证要求提供对应源码。修改后的版本通过网络供用户交互时，须按第 13 条向这些用户提供取得对应源码的机会
+- 本说明是简要概述，具体权利、源码义务、免责声明以 LICENSE 正文为准
 - 第三方组件保持各自原许可证。本仓库没有捆绑第三方前端代码、字体、素材、KataGo 二进制或模型；外部 KataGo 与模型须分别遵守其许可
 
-官方许可证源：[polyformproject/polyform-licenses](https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Noncommercial-1.0.0.md)。
+源代码：[vavilonska/infinite-go](https://github.com/vavilonska/infinite-go)。官方许可证全文：[GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html)。

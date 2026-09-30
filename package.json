@@ -9,7 +9,7 @@
     "start": "node server.js",
     "bridge": "node katago-bridge.js"
   },
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=22"
   }

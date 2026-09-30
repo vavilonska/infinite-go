@@ -1,12 +1,10 @@
-Required Notice: Copyright (c) 2026 vavilonska (https://github.com/vavilonska)
+Copyright (c) 2026 vavilonska (https://github.com/vavilonska)
 
-Infinite Go is made available under the PolyForm Noncommercial License 1.0.0.
-The unmodified license text is in LICENSE. This is source-available software,
-not software offered under an OSI-approved open-source license.
+Infinite Go is free and open-source software licensed under the GNU Affero
+General Public License, version 3 only (SPDX-License-Identifier: AGPL-3.0-only).
+The unmodified official license text is in LICENSE.
 
-Commercial uses not permitted by LICENSE require a separate written license
-from the copyright holder. No commercial license is granted by this notice.
-Contact: https://github.com/vavilonska
+Source code: https://github.com/vavilonska/infinite-go
 
 Third-party software and models, when obtained separately, retain their own
 licenses. No KataGo executable or model is distributed with this project.
