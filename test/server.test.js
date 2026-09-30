@@ -193,3 +193,8 @@ test('server health, static assets, and bounded room creation', async t => {
   assert.equal((await request('/api/rooms', { method: 'POST', body: {}, headers: { Origin: origin } })).status, 201);
   assert.equal((await request('/api/rooms', { method: 'POST', body: {} })).status, 503);
 });
+test('room configuration validates and retains branch thresholds', async t => {
+  const { request } = await host(t);
+  assert.equal((await request('/api/rooms', {method:'POST',body:{branchLimitExponent:1}})).status,400);
+  for(const exponent of [null,2,9,12]){const result=await request('/api/rooms',{method:'POST',body:{branchLimitExponent:exponent}});assert.equal(result.status,201);assert.equal(result.data.game.branchLimitExponent,exponent);}
+});

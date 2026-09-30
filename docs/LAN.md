@@ -36,12 +36,14 @@ All request bodies are JSON with `Content-Type: application/json`. Poll and acti
 | --- | --- | --- |
 | `GET /api/health` | none | `{ "ok": true, "mode": "lan" }` |
 | `GET /api/rooms` | none | `{ "rooms": [{ "code": "ABC234", "players": { "B": true, "W": false } }] }`; no game state or tokens |
-| `POST /api/rooms` | `{ "size": 9, "komi": 7.5 }`; either field may be omitted | New room, Black's token and snapshot; status 201 |
+| `POST /api/rooms` | `{ "size": 9, "komi": 7.5, "branchLimitExponent": 9 }`; fields may be omitted | New room, Black's token and snapshot; status 201 |
 | `POST /api/rooms/CODE/join` | `{}` | White's token and snapshot |
 | `GET /api/rooms/CODE` | none | Current authenticated player's snapshot |
 | `POST /api/rooms/CODE/actions` | Action below | New authoritative snapshot |
 
 A snapshot contains `code`, `role` (`B` or `W`), monotonic `revision`, `game` (the normal exportable engine state), and `players` (`{ B: true, W: false }` until White joins). Only the create/join response includes `token`. Joining also increments the revision, so refresh the state before the next action. Player booleans mean occupied seats, not current network presence.
+
+`branchLimitExponent` is fixed at room creation: an integer from 2 to 4096 means a threshold of 1 / 2^exponent; `null` means unlimited. Default is 9 (1/512). A leaf may branch only while its exact weight is strictly greater than that threshold. This is enforced by the authoritative engine, not just the UI.
 
 Actions all require the latest `revision` and a timeline `id`:
 

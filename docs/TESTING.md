@@ -2,7 +2,7 @@
 
 ## Executed
 
-- Node built-in unit tests: captures, suicide, inherited positional superko, pass exemption, source-preserving branches, duplicate outgoing edges, fixed-round snapshots, exact fractions beyond floating-point range, dead-group scoring approvals, dispute continuation, save validation, distinct histories sharing a board
+- Node built-in unit tests: captures, suicide, inherited positional superko, pass exemption, source-preserving branches, threshold boundaries (greater / equal / unlimited), legacy save compatibility, duplicate outgoing edges, fixed-round snapshots, exact fractions beyond floating-point range, dead-group scoring approvals, dispute continuation, save validation, distinct histories sharing a board
 - Local HTTP two-client integration tests: room creation, join, role enforcement, private reconnect token, stale and concurrent actions, scoring approvals, invalid input, cross-site requests, static-file boundaries
 - JavaScript syntax checks for project modules
 

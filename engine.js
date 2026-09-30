@@ -28,10 +28,12 @@ export function apply(state,move,size) {
 export function replay(history,size) { return history.reduce((s,m)=>apply(s,m,size),initial(size)); }
 const moveKey = m => m.type==='play'?`${m.color}:${m.at}`:m.type==='pass'?`${m.color}:pass`:'resume';
 export const historyKey = history => history.map(moveKey).join('|');
-export function createGame(size=9,komi=7.5) {
+export function createGame(size=9,komi=7.5,branchLimitExponent=9) {
+  if(branchLimitExponent!==null&&(!Number.isSafeInteger(branchLimitExponent)||branchLimitExponent<2||branchLimitExponent>4096)) fail('分叉门槛指数需为 2 至 4096，或 null 表示不限制');
   if(![9,13,19].includes(size)||!Number.isFinite(komi)||Math.abs(komi)>100) fail('Use size 9, 13 or 19 and komi between -100 and 100');
-  return {format:'infinite-go',version:1,size,komi,nextId:2,round:1,queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
+  return {format:'infinite-go',version:1,size,komi,branchLimitExponent,nextId:2,round:1,queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
 }
+export function canBranch(game,line) { return game.branchLimitExponent==null||BigInt(line.weight.n)*(2n**BigInt(game.branchLimitExponent))>BigInt(line.weight.d); }
 export const lineById = (game,id) => game.lines.find(l=>l.id===id) || fail('Unknown timeline');
 export function ensureRound(game) { if(!game.queue.length) { const ids=game.lines.filter(l=>l.status==='playing').map(l=>l.id).sort((a,b)=>a-b); if(ids.length) { game.round++;game.queue=ids; } } }
 function consume(game,id) { if(game.queue[0]!==id) fail('Play the highlighted timeline first');game.queue.shift();ensureRound(game); }
@@ -45,7 +47,7 @@ export function play(game,id,index,at=null) {
   // Every existing outgoing edge counts, including ordinary play on any timeline.
   if(game.lines.some(l=>l.history.length>=target.length&&historyKey(l.history.slice(0,target.length))===key)) fail('That continuation already exists; choose a different move');
   let result=line;
-  if(index<line.history.length) { line.weight=half(line.weight); result={id:game.nextId++,parent:id,forkAt:index,weight:{...line.weight},history:target,status:'playing',dead:[],approvals:[]};game.lines.push(result); }
+  if(index<line.history.length) { if(!canBranch(game,line))fail('分叉权重已达到门槛；此时间线只能继续落子，不能再分叉');line.weight=half(line.weight); result={id:game.nextId++,parent:id,forkAt:index,weight:{...line.weight},history:target,status:'playing',dead:[],approvals:[]};game.lines.push(result); }
   else line.history.push(move);
   if(next.passes===2) result.status='scoring';
   consume(game,id);return result.id;
@@ -62,7 +64,7 @@ export function resume(game,id) {const l=lineById(game,id);if(l.status!=='scorin
 export function totals(game) {const t={B:fraction(0),W:fraction(0),draw:fraction(0),unsettled:fraction(0)};for(const l of game.lines){const k=l.status==='settled'?l.result.winner:'unsettled';t[k]=add(t[k],l.weight);}return t;}
 export const exportGame = game => JSON.stringify(game,null,2);
 export function importGame(text) {
-  const g=JSON.parse(text);if(g.format!=='infinite-go'||g.version!==1)fail('Unsupported save');createGame(g.size,g.komi);
+  const g=JSON.parse(text);if(g.format!=='infinite-go'||g.version!==1)fail('Unsupported save');if(g.branchLimitExponent===undefined)g.branchLimitExponent=null;createGame(g.size,g.komi,g.branchLimitExponent);
   if(!Array.isArray(g.lines)||!g.lines.length||!Array.isArray(g.queue))fail('Invalid save');
   const ids=new Set();let sum=fraction(0);
   for(const l of g.lines) {if(!Number.isSafeInteger(l.id)||l.id<1||ids.has(l.id))fail('Invalid timeline ID');ids.add(l.id);if(!Array.isArray(l.history)||!['playing','scoring','settled'].includes(l.status))fail('Invalid timeline');const s=replay(l.history,g.size);if((l.status==='playing')!==(s.passes<2))fail('Invalid status');if(!l.weight||!/^\d+$/.test(l.weight.n)||!/^\d+$/.test(l.weight.d)||l.weight.n==='0')fail('Invalid weight');l.weight=fraction(l.weight.n,l.weight.d);sum=add(sum,l.weight);if(!Array.isArray(l.dead)||new Set(l.dead).size!==l.dead.length||l.dead.some(p=>!Number.isInteger(p)||!s.board[p]))fail('Invalid dead stones');for(const p of l.dead)if(group(s.board,p,g.size).stones.some(n=>!l.dead.includes(n)))fail('Partial dead group');if(!Array.isArray(l.approvals)||l.approvals.some(c=>!['B','W'].includes(c))||new Set(l.approvals).size!==l.approvals.length)fail('Invalid approvals');if(l.status==='settled'){if(l.approvals.length!==2)fail('Missing score approval');l.result=score(g,l.id);}else if(l.approvals.length===2)fail('Invalid approvals'); }

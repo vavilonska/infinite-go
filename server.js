@@ -101,9 +101,9 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       if (path === '/api/rooms' && req.method === 'POST') {
         const body = await readJson(req);
-        fields(body, ['size', 'komi']);
+        fields(body, ['size', 'komi', 'branchLimitExponent']);
         let game;
-        try { game = createGame(body.size ?? 9, body.komi ?? 7.5); } catch (error) { reject(400, error.message); }
+        try { game = createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9); } catch (error) { reject(400, error.message); }
         if (body.size === null || body.komi === null) reject(400, 'Size and komi cannot be null');
         for (const [code, room] of rooms) if (Date.now() - room.touched > roomTtlMs) rooms.delete(code);
         if (rooms.size >= maxRooms) reject(503, 'Room limit reached; restart the host to clear old rooms');
