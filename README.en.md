@@ -1,5 +1,7 @@
 # Infinite Go
 
+<img src="assets/icon.png" width="160" height="160" alt="Infinite Go ink-wash icon">
+
 [中文](README.md) | English
 
 **One move, another world. Keep the past and explore a different continuation.**
@@ -35,6 +37,8 @@ Open `http://localhost:8000`. Choose **9 / 13 / 19** lines (default 9), with con
 **Do not expose the room server to the public Internet or forward router ports.** HTTP is unencrypted and intended for trusted home/friend networks. The app does not change firewall settings.
 
 Distant friends may configure a virtual LAN such as ZeroTier themselves; see the [remote-play guide](docs/REMOTE-PLAY.md). The page does not integrate a VPN, create networks or change security settings.
+
+The board-side move-number toggle labels surviving stones with their actual move numbers (passes count; dispute-resume events do not). History previews show only that position; captured numbers disappear and reoccupied points receive new numbers. The branch-origin text retains its creation move, new/original coordinates and parent ID (coordinates skip I; passes are labeled as passes). A gold ring marks the branch move only while that stone survives; the teal/purple marker identifies the latest move.
 
 ## Branching
 
