@@ -17,6 +17,7 @@ const STATIC_FILES = new Map([
   ['/tree.js', ['tree.js', 'text/javascript; charset=utf-8']],
   ['/providers.js', ['providers.js', 'text/javascript; charset=utf-8']],
   ['/ai.js', ['ai.js', 'text/javascript; charset=utf-8']],
+  ['/deployment.js', ['deployment.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
 ]);
 

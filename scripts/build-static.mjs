@@ -1,0 +1,11 @@
+import { mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const destination=resolve(process.argv[2]||resolve(root,'dist'));
+await mkdir(destination,{recursive:true});
+const assets=['index.html','style.css','app.js','engine.js','tree.js','ai.js','providers.js','LICENSE','NOTICE'];
+for(const asset of assets)await copyFile(resolve(root,asset),resolve(destination,asset));
+await writeFile(resolve(destination,'deployment.js'),'export const STATIC_HOST = true;\n');
+await writeFile(resolve(destination,'.nojekyll'),'');
+console.log(`Prepared ${assets.length+2} static assets. No room server, AI engine, model, or credentials included.`);

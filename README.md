@@ -6,6 +6,12 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 > v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。渲染与真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
+## 静态网页与自托管后端
+
+本项目提供 GitHub Pages 静态部署工作流。静态页面可直接同屏双人玩，默认不连接 AI 或房间服务，不会在 GitHub Pages 运行 Node / KataGo。完整部署与接入边界见 [GitHub Pages 说明](docs/PAGES.md)。
+
+局域网、虚拟局域网和 AI 后端由使用者自行提供。熟人联机请优先直接打开房主 Node 服务所提供的同套页面；不要假设公开 HTTPS 页面能直接连接 HTTP 局域网后端。
+
 ## 开始玩
 
 需要 Node.js 22 或更新版本。没有 npm 依赖，不需要 `npm install`。
@@ -80,7 +86,7 @@ npm test
 - `katago-bridge.js`：可选独立 KataGo analysis 进程桥接
 - `test/`：Node 自带测试运行器
 
-当前不含公网匹配、账户系统、排位、云存储、自动部署或生产级安全保证。欢迎围绕规则边界、移动端触摸体验、性能和更多合法 provider 提交 issue / pull request。
+当前不含公网匹配、账户系统、排位、云存储、生产级安全保证。欢迎围绕规则边界、移动端触摸体验、性能和更多合法 provider 提交 issue / pull request。
 
 ## 相关创意
 

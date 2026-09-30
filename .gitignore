@@ -11,3 +11,4 @@ local-*.cfg
 local-*.json
 .DS_Store
 coverage/
+dist/
