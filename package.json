@@ -1,0 +1,16 @@
+{
+  "name": "infinite-go",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An offline, branching-timeline Go prototype",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.js",
+    "bridge": "node katago-bridge.js"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
