@@ -2,7 +2,7 @@
 
 The Pages artifact contains only the HTML, CSS, frontend ES modules, LICENSE and NOTICE. It does not contain or run `server.js`, the KataGo bridge, models, binaries, accounts, room persistence or credentials. The app defaults to same-screen human play. AI is disconnected and its dependent modes are disabled until the user connects a compatible service.
 
-All frontend module/style links are relative, so the app works beneath a project prefix such as `/infinite-go/`. The build writes `deployment.js` with `STATIC_HOST = true`; local Node hosting keeps it false. Static mode disables room creation/join controls, avoids room auto-reconnect requests, and explains the self-hosting route.
+All frontend module/style links are relative, so the app works beneath a project prefix such as `/infinite-go/`. The build writes `deployment.js` with `STATIC_HOST = true`; local Node hosting keeps it false. Static mode disables same-origin LAN APIs. The separate optional HTTPS remote-room entrance requires an explicitly configured service; it does not send credentials until the player connects or resumes. See [Cloudflare friend rooms](CLOUDFLARE.md).
 
 ## Repository deployment
 

@@ -110,8 +110,12 @@ jobs:
           VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
           TAG="v$VERSION"
           if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; bump package.json version rather than replacing published artifacts."
-            exit 1
+            echo "Release $TAG already exists; build artifacts are available in this run. Published files remain unchanged."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" = "true" ]; then
+              echo "Explicit publication needs a new package.json version."
+              exit 1
+            fi
+            exit 0
           fi
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
           cp docs/RELEASES.md release-notes.md

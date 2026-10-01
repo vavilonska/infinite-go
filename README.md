@@ -10,7 +10,7 @@
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Open source under GNU AGPL v3 only (AGPL-3.0-only).
 
-> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有账号、云服务或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
+> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有玩家账号或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
 ## 下载与手机
 
@@ -21,6 +21,10 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 在线同屏版：[立即打开 Infinite Go](https://vavilonska.github.io/infinite-go/)。本项目提供 GitHub Pages 静态部署工作流。静态页面可直接同屏双人玩，默认不连接 AI 或房间服务，不会在 GitHub Pages 运行 Node / KataGo。完整部署与接入边界见 [GitHub Pages 说明](docs/PAGES.md)。
 
 局域网、虚拟局域网和 AI 后端由使用者自行提供。熟人联机请优先直接打开房主 Node 服务所提供的同套页面；不要假设公开 HTTPS 页面能直接连接 HTTP 局域网后端。
+
+## 可选公网熟人房间
+
+新增 Cloudflare Workers Free + SQLite Durable Objects 后端与 HTTPS 房间入口，部署者验证后可供双方浏览器直接凭房间码加入。当前默认地址留空；请按[免费部署与数据说明](docs/CLOUDFLARE.md)配置自己的服务，未部署时继续同屏 / LAN。容量上限会明确拒绝操作，不改变“不限制”棋规；房间固定 24 小时到期，请导出保存。
 
 ## 开始玩
 

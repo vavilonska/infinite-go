@@ -35,3 +35,9 @@ AI adapter-specific tests and real-engine verification are documented alongside 
 The optional bridge was checked with an independently started KataGo v1.18.1 process and a small b6c96 model obtained separately. A 64-visit analysis returned an explicit Black-perspective winrate and a legal move. An HTTP move-generation request after pass / pass / resume also returned a legal move, matching request and node IDs, at 16 visits. These are protocol / legality smoke tests, not a playing-strength evaluation or browser end-to-end test. No executable, model, credential, or raw run log is included.
 
 The deployed pruning update was additionally checked in the cloud desktop browser: the C20 field showed actual 1/32 (3.125%), raw 0.625 points and rounded 1 point; a test prune changed the surviving weight from 1/2 to 1 and effective komi from 7.5 to 17.5, with a +10 ledger entry.
+
+## Optional Cloudflare friend rooms
+
+The source includes a Workers Free / SQLite Durable Object adapter. The full Node suite passes 107 tests, including server-authoritative room actions, simultaneous seat claims and same-version writes, concealed nigiri, storage failure rollback, expiry, resource/rate limits, hibernation state and origin-locked remote client reconnect behavior.
+
+A local official Cloudflare workerd runtime was exercised with two independent Node HTTP/WebSocket clients: create/join, alternating moves, server rejection of wrong-color and stale actions, exactly one successful concurrent same-version write, pushed snapshots and credential-based reconnect passed. This is a local runtime integration test, not proof of public Cloudflare deployment or two physical phones. The cloud browser blocks localhost access, so local pixel QA was unavailable. The default remote endpoint remains empty until an operator deploys and verifies it; use the deployment checklist in [CLOUDFLARE.md](CLOUDFLARE.md).

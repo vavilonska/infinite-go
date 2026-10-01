@@ -1,0 +1,317 @@
+import {
+  CODE_RE, LIMITS, ROOM_TTL_MS, HttpError, reject, fields, newCode,
+  createRoom, snapshot, authenticate, authenticateToken, assertCapacity,
+  joinRoom, applySetup, applyAction, consumeRate, byteLength,
+} from './room-state.js';
+
+export function json(status, data, headers = {}) {
+  return new Response(JSON.stringify(data), { status, headers: {
+    'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...headers,
+  } });
+}
+function errorResponse(error) {
+  return json(error.status || 503, {
+    error: error.status ? error.message : 'Cloud service is unavailable. Keep your local snapshot and try again later.',
+    ...(error.status ? error.details : { errorCode: 'CLOUD_UNAVAILABLE', recoverable: true }),
+  }, error.status === 429 ? { 'Retry-After': String(Math.ceil(error.details.retryAfterMs / 1000)) } : {});
+}
+export async function readJson(request) {
+  if ((request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== 'application/json') reject(415, 'Send application/json');
+  if (Number(request.headers.get('Content-Length')) > LIMITS.requestBytes) reject(413, 'Request body is too large');
+  if (!request.body) reject(400, 'Invalid JSON');
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > LIMITS.requestBytes) { await reader.cancel(); reject(413, 'Request body is too large'); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  catch { reject(400, 'Invalid JSON'); }
+}
+export function corsHeaders(request, env = {}) {
+  const origin = request.headers.get('Origin');
+  if (!origin) return {};
+  const allowed = new Set([new URL(request.url).origin, 'https://vavilonska.github.io']);
+  for (const configured of (env.ALLOWED_ORIGINS || '').split(',').filter(Boolean)) {
+    try { const url = new URL(configured.trim()); if (url.protocol === 'https:' && url.origin === configured.trim()) allowed.add(url.origin); } catch { /* Invalid configuration never widens CORS. */ }
+  }
+  if (!allowed.has(origin)) reject(403, 'This website is not allowed to access this service');
+  return { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Expose-Headers': 'Retry-After' };
+}
+function withCors(response, headers) {
+  // Constructing with the original response preserves Cloudflare's WebSocket upgrade.
+  const result = new Response(response.body, response);
+  for (const [name, value] of Object.entries(headers)) result.headers.set(name, value);
+  return result;
+}
+async function creationBucket(request) {
+  // A fixed set of buckets bounds limiter storage. Collisions may share a quota.
+  // No raw address is persisted; the hash rotates daily.
+  const address = request.headers.get('CF-Connecting-IP') || 'local-development';
+  const bytes = new TextEncoder().encode(`${Math.floor(Date.now() / ROOM_TTL_MS)}:${address}`);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return (digest[0] * 256 + digest[1]) % 256;
+}
+export default {
+  async fetch(request, env) {
+    let cors = {};
+    try {
+      cors = corsHeaders(request, env);
+      const url = new URL(request.url);
+      if (url.search) reject(400, 'Query parameters are not supported; never put reconnect tokens in URLs');
+      if (request.method === 'OPTIONS') {
+        const method = request.headers.get('Access-Control-Request-Method');
+        const requested = (request.headers.get('Access-Control-Request-Headers') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        if (method && !['GET', 'POST'].includes(method) || requested.some(value => !['authorization', 'content-type'].includes(value))) reject(403, 'Unsupported cross-origin request');
+        return new Response(null, { status: 204, headers: cors });
+      }
+      if (url.pathname === '/api/health' && request.method === 'GET') return withCors(json(200, { ok: true, mode: 'cloud', protocol: 1 }), cors);
+      if (url.pathname === '/api/rooms' && request.method === 'POST') {
+        const options = await readJson(request);
+        // Validate before consuming a creation slot or allocating a room object.
+        createRoom('VALIDATION00', options);
+        const gate = env.ROOM_CREATION.getByName('creation-v1');
+        const admitted = await gate.fetch(new Request('https://limiter.internal/admit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket: await creationBucket(request) }) }));
+        if (!admitted.ok) return withCors(admitted, cors);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const code = newCode();
+          const response = await env.ROOMS.getByName(code).fetch(new Request('https://room.internal/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, options }) }));
+          if (response.status !== 409) return withCors(response, cors);
+        }
+        reject(503, 'Could not allocate a room; try again');
+      }
+      const match = /^\/api\/rooms\/([A-Za-z2-9]{12})(?:\/(join|actions|setup|events))?$/.exec(url.pathname);
+      if (!match || !CODE_RE.test(match[1].toUpperCase())) reject(404, 'Not found');
+      const path = match[2] || '';
+      if (!((!path || path === 'events') && request.method === 'GET' || ['join', 'actions', 'setup'].includes(path) && request.method === 'POST')) reject(405, 'Method not allowed');
+      if (path === 'events' && request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') reject(426, 'A WebSocket upgrade is required');
+      if (path !== 'events' && request.headers.has('Upgrade')) reject(400, 'Use the events endpoint for WebSockets');
+      const response = await env.ROOMS.getByName(match[1].toUpperCase()).fetch(request);
+      return withCors(response, cors);
+    } catch (error) { return withCors(errorResponse(error), cors); }
+  },
+};
+
+// These classes use the SQLite storage backend selected by new_sqlite_classes.
+// Its KV API avoids schema writes for probes of nonexistent room codes.
+export class GameRoom {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+    this.room = null;
+    this.traffic = {};
+    this.serial = Promise.resolve();
+    this.ready = ctx.blockConcurrencyWhile(async () => {
+      const values = await ctx.storage.get(['room', 'traffic']);
+      this.room = values.get('room') || null;
+      this.traffic = values.get('traffic') || {};
+    });
+  }
+  exclusive(operation) {
+    // Parsing streams can overlap even in a single-threaded object. Serialize the
+    // whole state transition, including persistence, before accepting its result.
+    const result = this.serial.then(operation);
+    this.serial = result.catch(() => {});
+    return result;
+  }
+  async liveRoom() {
+    await this.ready;
+    if (!this.room) reject(404, 'Room not found or expired');
+    if (Date.now() >= this.room.expiresAt) { await this.expire(); reject(410, 'This room has expired. Continue from your saved local snapshot.', { errorCode: 'ROOM_EXPIRED', recoverable: true }); }
+    return this.room;
+  }
+  async charge(key = 'requests', limit = LIMITS.requestsPerMinute) {
+    consumeRate(this.traffic, key, limit);
+    await this.ctx.storage.put('traffic', this.traffic);
+  }
+  async save(next, seat) {
+    try { assertCapacity(next); }
+    catch (error) { if (error.status === 507) error.details = { ...snapshot(this.room, seat), ...error.details }; throw error; }
+    try { await this.ctx.storage.put('room', next); }
+    catch { reject(503, 'Cloud storage is unavailable. Export your snapshot and continue locally, or try again later.', { ...snapshot(this.room, seat), errorCode: 'CLOUD_UNAVAILABLE', recoverable: true }); }
+    this.room = next;
+    this.broadcast();
+  }
+  async fetch(request) {
+    try {
+      // Finish reading the request before choosing a revision; parsing may yield.
+      const body = request.method === 'POST' ? await readJson(request) : undefined;
+      return await this.exclusive(() => this.handleRequest(request, body));
+    } catch (error) { return errorResponse(error); }
+  }
+  async handleRequest(request, body) {
+    try {
+      const path = new URL(request.url).pathname;
+      await this.ready;
+      if (path === '/create' && request.method === 'POST') {
+        fields(body, ['code', 'options'], ['code', 'options']);
+        if (!CODE_RE.test(body.code)) reject(400, 'Invalid room code');
+        if (this.room) reject(409, 'Room already exists');
+        const room = createRoom(body.code, body.options);
+        assertCapacity(room);
+        // Schedule cleanup first: if storage quota fails between these writes,
+        // there can be an empty alarm, but never a stored room without cleanup.
+        await this.ctx.storage.setAlarm(room.expiresAt);
+        await this.ctx.storage.put('room', room);
+        this.room = room;
+        return json(201, { ...snapshot(room, 'A'), token: room.tokens.A });
+      }
+      await this.liveRoom();
+      await this.charge();
+      // Re-read after the storage gate; all mutations use the authoritative revision.
+      const room = this.room;
+      if (path.endsWith('/events') && request.method === 'GET') return await this.connect(request);
+      if (path.endsWith('/join') && request.method === 'POST') {
+        fields(body, []);
+        const next = joinRoom(room);
+        await this.save(next, 'B');
+        return json(200, { ...snapshot(next, 'B'), token: next.tokens.B });
+      }
+      const seat = authenticate(request, room);
+      if (request.method === 'GET') return json(200, snapshot(room, seat));
+      await this.charge(seat, LIMITS.actionsPerSeatPerMinute);
+      const current = this.room;
+      let next;
+      if (path.endsWith('/setup')) next = applySetup(current, seat, body);
+      else if (path.endsWith('/actions')) next = applyAction(current, seat, body);
+      else reject(405, 'Method not allowed');
+      await this.save(next, seat);
+      return json(200, snapshot(next, seat));
+    } catch (error) { return errorResponse(error); }
+  }
+  sockets() { return this.ctx.getWebSockets().filter(ws => ws.readyState === 1); }
+  async scheduleAlarm() {
+    if (!this.room) return;
+    let next = this.room.expiresAt;
+    for (const ws of this.sockets()) {
+      const session = ws.deserializeAttachment();
+      if (!session?.seat) next = Math.min(next, session?.deadline || Date.now());
+    }
+    if (await this.ctx.storage.getAlarm() !== next) await this.ctx.storage.setAlarm(next);
+  }
+  async connect(request) {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') reject(426, 'A WebSocket upgrade is required');
+    const sockets = this.sockets();
+    if (sockets.length >= LIMITS.sockets || sockets.filter(ws => !ws.deserializeAttachment()?.seat).length >= LIMITS.pendingSockets) reject(429, 'Too many room connections; wait and retry', { retryAfterMs: LIMITS.authenticationMs });
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ seat: null, deadline: Date.now() + LIMITS.authenticationMs });
+    try { await this.scheduleAlarm(); }
+    catch (error) { server.close(1011, 'Service unavailable'); throw error; }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async webSocketMessage(ws, message) {
+    return this.exclusive(() => this.handleSocketMessage(ws, message));
+  }
+  async handleSocketMessage(ws, message) {
+    try {
+      const room = await this.liveRoom();
+      if (typeof message !== 'string' || byteLength(message) > LIMITS.requestBytes) reject(413, 'Invalid WebSocket message size');
+      let body;
+      try { body = JSON.parse(message); } catch { reject(400, 'Invalid JSON'); }
+      const session = ws.deserializeAttachment();
+      if (!session || session.seat) reject(400, 'Use authenticated HTTP requests for actions');
+      if (Date.now() >= session.deadline) reject(401, 'Authentication timed out');
+      fields(body, ['type', 'token'], ['type', 'token']);
+      if (body.type !== 'auth') reject(401, 'Authenticate as the first message');
+      const seat = authenticateToken(body.token, room);
+      if (this.sockets().filter(other => other !== ws && other.deserializeAttachment()?.seat === seat).length >= LIMITS.socketsPerSeat) reject(429, 'This player already has two connected tabs', { retryAfterMs: 15_000 });
+      ws.serializeAttachment({ seat });
+      ws.send(JSON.stringify({ type: 'snapshot', snapshot: snapshot(room, seat) }));
+      // The existing auth alarm may fire early once; no timer keeps the object awake.
+    } catch (error) {
+      try { ws.send(JSON.stringify({ type: 'error', error: error.status ? error.message : 'Cloud service is unavailable', status: error.status || 503, ...(error.details || {}) })); } catch { /* Client already closed. */ }
+      ws.close(error.status === 413 ? 1009 : 1008, 'Connection closed');
+    }
+  }
+  broadcast() {
+    if (!this.room) return;
+    for (const ws of this.sockets()) {
+      const seat = ws.deserializeAttachment()?.seat;
+      if (!['A', 'B'].includes(seat)) continue;
+      try { ws.send(JSON.stringify({ type: 'snapshot', snapshot: snapshot(this.room, seat) })); }
+      catch { ws.close(1011, 'Reconnect to resume'); }
+    }
+  }
+  webSocketClose(ws) { ws.close(1000, ''); }
+  webSocketError(ws) { ws.close(1011, 'Reconnect to resume'); }
+  async expire() {
+    for (const ws of this.sockets()) {
+      try { ws.send(JSON.stringify({ type: 'error', status: 410, errorCode: 'ROOM_EXPIRED', error: 'This room has expired. Continue from your saved local snapshot.', recoverable: true })); } catch { /* Already closed. */ }
+      ws.close(4004, 'Room expired');
+    }
+    this.room = null;
+    this.traffic = {};
+    await this.ctx.storage.deleteAll();
+    await this.ctx.storage.deleteAlarm();
+  }
+  async alarm() {
+    return this.exclusive(async () => {
+      await this.ready;
+      if (!this.room || Date.now() >= this.room.expiresAt) { await this.expire(); return; }
+      for (const ws of this.sockets()) {
+        const session = ws.deserializeAttachment();
+        if (!session?.seat && (!session?.deadline || Date.now() >= session.deadline)) ws.close(1008, 'Authentication timed out');
+      }
+      await this.scheduleAlarm();
+    });
+  }
+}
+
+export class RoomCreationLimiter {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.counts = {};
+    this.serial = Promise.resolve();
+    this.ready = ctx.blockConcurrencyWhile(async () => { this.counts = await ctx.storage.get('counts') || {}; });
+  }
+  async fetch(request) {
+    try {
+      const body = await readJson(request);
+      fields(body, ['bucket'], ['bucket']);
+      if (!Number.isInteger(body.bucket) || body.bucket < 0 || body.bucket >= 256) reject(400, 'Invalid bucket');
+      const result = this.serial.then(() => this.admit(body.bucket));
+      this.serial = result.catch(() => {});
+      return await result;
+    } catch (error) { return errorResponse(error); }
+  }
+  async admit(bucket) {
+    try {
+      await this.ready;
+      const now = Date.now();
+      // At most 257 small counters; reset the hourly buckets instead of retaining keys.
+      if (this.counts.hour !== Math.floor(now / 3_600_000)) this.counts = { day: this.counts.day, hour: Math.floor(now / 3_600_000) };
+      const next = structuredClone(this.counts);
+      consumeRate(next, 'day', 100, now, ROOM_TTL_MS);
+      consumeRate(next, `ip${bucket}`, 5, now, 3_600_000);
+      const nextDay = (Math.floor(now / ROOM_TTL_MS) + 1) * ROOM_TTL_MS;
+      if (await this.ctx.storage.getAlarm() !== nextDay) await this.ctx.storage.setAlarm(nextDay);
+      await this.ctx.storage.put('counts', next);
+      this.counts = next;
+      return json(200, { ok: true });
+    } catch (error) { return errorResponse(error); }
+  }
+  async alarm() {
+    const result = this.serial.then(async () => {
+      await this.ready;
+      // An old midnight alarm can be delivered after a new-day request.
+      if (this.counts.day?.window >= Math.floor(Date.now() / ROOM_TTL_MS)) return;
+      this.counts = {};
+      await this.ctx.storage.deleteAll();
+      await this.ctx.storage.deleteAlarm();
+    });
+    this.serial = result.catch(() => {});
+    return result;
+  }
+}

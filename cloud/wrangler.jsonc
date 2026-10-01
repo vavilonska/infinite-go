@@ -1,0 +1,18 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "infinite-go-rooms",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "vars": { "ALLOWED_ORIGINS": "https://vavilonska.github.io" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "GameRoom" },
+      { "name": "ROOM_CREATION", "class_name": "RoomCreationLimiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom", "RoomCreationLimiter"] }
+  ]
+}

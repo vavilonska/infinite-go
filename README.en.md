@@ -10,7 +10,7 @@ Real gameplay example: one history branches into three timelines weighted 1/4, 1
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), open source under GNU AGPL v3 only (AGPL-3.0-only).
 
-> v0.1 prototype: same-screen play, trusted-LAN rooms and optional self-hosted AI. No public matchmaking, accounts, cloud service or bundled AI model. Basic desktop interactions have been checked on the live site; real phones and two-device Wi-Fi still need device testing. See [verification notes](docs/TESTING.md).
+> v0.1 prototype: same-screen play, trusted-LAN rooms and optional self-hosted AI. No public matchmaking, player accounts or bundled AI model. Basic desktop interactions have been checked on the live site; real phones and two-device Wi-Fi still need device testing. See [verification notes](docs/TESTING.md).
 
 ## Downloads and mobile
 
@@ -21,6 +21,10 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 [Play Infinite Go](https://vavilonska.github.io/infinite-go/). The repository includes a GitHub Pages workflow. The static site supports same-screen human play without connecting to AI or a room service by default. GitHub Pages does not run Node or KataGo. See [Pages deployment boundaries](docs/PAGES.md).
 
 Players provide their own LAN, virtual-LAN and AI backends. For games with friends, open the same frontend served by the host's Node server directly. Do not assume a public HTTPS page can connect to an HTTP LAN backend.
+
+## Optional Internet friend rooms
+
+An optional Cloudflare Workers Free + SQLite Durable Objects backend and HTTPS room entrance let two browsers join by a private room code after an operator deploys and verifies the service. The default address is empty. See [free deployment and data boundaries](docs/CLOUDFLARE.md); offline/LAN play remains available. Explicit hosting limits reject operations without changing unlimited game rules. Rooms expire after 24 hours; export first.
 
 ## Start playing
 
