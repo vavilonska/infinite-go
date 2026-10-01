@@ -14,3 +14,4 @@ button.danger{background:#442539;border-color:#bc718d;color:#ffd6e4}#compensatio
 #nigiriStones{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;max-width:320px}#nigiriStones .stone-symbol{width:22px;height:22px}.nigiri-panel p{margin-top:10px}
 
 .host-entry label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.host-entry input[type=text]{max-width:260px;width:100%;background:#0e1728;color:var(--text);border:1px solid var(--stroke);border-radius:7px;padding:8px}.host-entry input[type=number]{width:95px}.host-entry p{margin-top:10px}
+#remoteCustomService{margin-top:12px}#remoteCustomService label{align-items:flex-start;flex-direction:column}#remoteEndpoint{max-width:100%;width:100%;min-width:0}

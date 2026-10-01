@@ -4,11 +4,12 @@
 <section class="panel lan"><details id="roomPanel"><summary>双人朋友房间 <span id="connection">同屏模式</span></summary>
 <div class="lan-controls"><label>联机方式 <select id="networkMode"><option value="remote">远程朋友房间 · 互联网</option><option value="lan">局域网 · 房主 Node 服务</option></select></label></div>
 <div id="remoteOptions" class="host-entry">
-<label>HTTPS 房间服务 <input id="remoteEndpoint" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://你的房间服务域名" aria-describedby="remoteTrust remoteConfigNote" style="max-width:100%;width:100%;min-width:0"></label>
+<label>房间服务 <select id="remoteServiceMode" aria-describedby="remoteTrust"><option value="default">默认朋友房间服务</option><option value="custom">自定义服务</option></select></label>
+<div id="remoteCustomService" hidden><label>自定义 HTTPS 服务 <input id="remoteEndpoint" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://你的房间服务域名" aria-describedby="remoteTrust remoteConfigNote"></label></div>
 <p id="remoteConfigNote" class="muted"></p>
-<p id="remoteTrust" class="muted">仅连接你信任的服务。点击“同意连接”会把本局规则和操作发送给上方服务；运营者可访问棋局、IP 和房间凭据。换服务不会转发原服务的凭据。无需账号、聊天或公开匹配。</p>
+<p id="remoteTrust" class="muted">仅连接你信任的服务。点击“同意连接”会把本局规则和操作发送给所选服务；运营者可访问棋局、IP 和房间凭据。换服务不会转发原服务的凭据。无需账号、聊天或公开匹配。</p>
 <p id="remoteLimits" class="muted">远程房间自创建起保留 24 小时；免费服务受额度与棋局大小限制（96 KiB、128 条时间线记录、累计 2048 手、单线 512 手）。这不改变“不限制”分叉规则。达到限制、断网或额度耗尽时，请导出 JSON，回到同屏继续；云端不保证长期存档。</p>
-<p id="remoteStorage" class="muted">重连凭据只保存在当前标签页的会话存储，刷新后可点加入恢复；关闭标签页后可能丢失。请只把房间码和服务地址发给朋友，不要分享浏览器存储内容。</p>
+<p id="remoteStorage" class="muted">重连凭据只保存在当前标签页的会话存储，刷新后可点加入恢复；关闭标签页后可能丢失。分享游戏页面和房间码即可；使用自定义服务时，另行告诉朋友所选服务。不要分享浏览器存储内容。</p>
 <p id="remoteStatus" class="muted" role="status" aria-live="polite"></p>
 <p id="remoteAndroid" class="muted" hidden>Android 离线安装包不直连远程服务。请在系统浏览器打开 <a href="https://vavilonska.github.io/infinite-go/" target="_blank" rel="noopener">在线游戏页面</a> 使用远程朋友房间。</p>
 </div>

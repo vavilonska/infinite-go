@@ -24,7 +24,7 @@ Players provide their own LAN, virtual-LAN and AI backends. For games with frien
 
 ## Optional Internet friend rooms
 
-An optional Cloudflare Workers Free + SQLite Durable Objects backend and HTTPS room entrance let two browsers join by a private room code after an operator deploys and verifies the service. The default address is empty. See [free deployment and data boundaries](docs/CLOUDFLARE.md); offline/LAN play remains available. Explicit hosting limits reject operations without changing unlimited game rules. Rooms expire after 24 hours; export first.
+The default Cloudflare Workers Free + SQLite Durable Objects friend-room service is deployed and verified. Both players open the online page and select the default service; the host creates a room and shares its private code. No backend URL entry is needed. You can also select a custom service; see [free deployment and data boundaries](docs/CLOUDFLARE.md). Offline/LAN play remains available. Explicit hosting limits reject operations without changing unlimited game rules. Rooms expire after 24 hours; export first.
 
 ## Start playing
 

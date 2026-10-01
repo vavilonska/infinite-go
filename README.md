@@ -24,7 +24,7 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 ## 可选公网熟人房间
 
-新增 Cloudflare Workers Free + SQLite Durable Objects 后端与 HTTPS 房间入口，部署者验证后可供双方浏览器直接凭房间码加入。当前默认地址留空；请按[免费部署与数据说明](docs/CLOUDFLARE.md)配置自己的服务，未部署时继续同屏 / LAN。容量上限会明确拒绝操作，不改变“不限制”棋规；房间固定 24 小时到期，请导出保存。
+Cloudflare Workers Free + SQLite Durable Objects 默认朋友房间服务已部署并验证。双方打开在线页面，选择默认服务，由房主创建并私下分享房间码；无需填写后端网址。也可选择自定义服务，按[免费部署与数据说明](docs/CLOUDFLARE.md)配置自己的后端。同屏 / LAN 仍然可用。容量上限会明确拒绝操作，不改变“不限制”棋规；房间固定 24 小时到期，请导出保存。
 
 ## 开始玩
 

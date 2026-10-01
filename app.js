@@ -61,16 +61,19 @@ function accept(data,target=session){
  if(changed){game=nextGame;const l=game.lines.find(l=>l.id===selected);index=l?.history.length??0;pending=null;render();}
  renderRoomInfo();
 }
+function defaultRemoteService(){return $('remoteServiceMode').value==='default';}
 function renderRoomInfo(){
  if(session){
   const who=`房间 ${session.code} · 你是${session.role?colorName(session.role)+'方':'席位 '+session.seat+'（待选色）'} · ${session.players?.W?'双方已加入':'等待另一方加入'}`;
-  $('roomInfo').textContent=session.mode==='remote'?`${who}。朋友需选择同一 HTTPS 服务，并输入此 12 位房间码。${Number.isFinite(session.expiresAt)?'到期时间：'+new Date(session.expiresAt).toLocaleString()+'。':''}`:`${who}。让另一设备打开同一电脑的局域网地址，单个空房可直接加入；多房间才需房间码`;
- }else $('roomInfo').textContent=$('networkMode').value==='remote'?'创建后把房间码和 HTTPS 服务地址发给朋友。每房仅限两人；房间码请只给要加入的朋友。':STATIC_HOST?'静态网页不提供局域网房间服务器。请启动 Node 服务，并打开房主地址上的同套页面；不要从本 HTTPS 页面直连 HTTP 局域网后端。':'用 Node 启动房间服务后，同 Wi-Fi 的另一台设备打开电脑的局域网地址。单个可加入房间无需手输码；无需账号';
+  $('roomInfo').textContent=session.mode==='remote'?`${who}。${defaultRemoteService()?'朋友打开本网页，选择默认朋友房间服务':'朋友需选择同一自定义服务'}，并输入此 12 位房间码。${Number.isFinite(session.expiresAt)?'到期时间：'+new Date(session.expiresAt).toLocaleString()+'。':''}`:`${who}。让另一设备打开同一电脑的局域网地址，单个空房可直接加入；多房间才需房间码`;
+ }else $('roomInfo').textContent=$('networkMode').value==='remote'?`${defaultRemoteService()?'创建后把本网页和房间码发给朋友，双方选择默认朋友房间服务即可':'创建后把本网页、房间码和自定义服务地址发给朋友'}。每房仅限两人；房间码请只给要加入的朋友。`:STATIC_HOST?'静态网页不提供局域网房间服务器。请启动 Node 服务，并打开房主地址上的同套页面；不要从本 HTTPS 页面直连 HTTP 局域网后端。':'用 Node 启动房间服务后，同 Wi-Fi 的另一台设备打开电脑的局域网地址。单个可加入房间无需手输码；无需账号';
 }
 function renderRoomControls(){
  const remote=$('networkMode').value==='remote',disabled=!!session||connecting;
  $('remoteOptions').hidden=!remote;$('remoteAndroid').hidden=!ANDROID_OFFLINE;
- $('networkMode').disabled=disabled;$('remoteEndpoint').disabled=disabled;$('roomCode').disabled=disabled;$('new').disabled=disabled;$('load').disabled=disabled;
+ $('networkMode').disabled=disabled;$('remoteServiceMode').disabled=disabled;$('remoteEndpoint').disabled=disabled;$('roomCode').disabled=disabled;$('new').disabled=disabled;$('load').disabled=disabled;
+ $('remoteCustomService').hidden=defaultRemoteService();
+ $('remoteConfigNote').textContent=defaultRemoteService()?'双方使用本网页的默认朋友房间服务，无需填写服务地址。':'请填写你或朋友部署的兼容 HTTPS 房间服务，只含完整源地址，不含路径或参数。双方必须选择同一自定义服务。';
  $('roomCode').maxLength=remote?12:8;$('roomCode').placeholder=remote?'远程房间码（12 位，必填）':'房间码（单局可留空）';
  $('host').textContent=remote?'同意连接并创建':'创建房间';$('join').textContent=remote?'同意连接并加入 / 恢复':'加入房间';
  $('host').disabled=disabled||(remote?ANDROID_OFFLINE||navigator.onLine===false:STATIC_HOST);$('join').disabled=$('host').disabled;
@@ -122,7 +125,7 @@ async function connect(join){
   ai?.reset();selected=1;accept(data);$('roomCode').value=data.code;
   if(remote){
    const persisted=saveRemoteSession(roomStorage,{...candidate.room,expiresAt:data.expiresAt});
-   $('remoteStorage').textContent=persisted?'重连凭据已保存在当前标签页；刷新后需点“加入 / 恢复”。关闭标签页后可能丢失。请只分享房间码和服务地址，不要分享浏览器存储内容。':'此浏览器不允许会话存储：刷新或关闭后可能无法恢复席位，请随时导出当前棋局。';
+   $('remoteStorage').textContent=persisted?'重连凭据已保存在当前标签页；刷新后需点“加入 / 恢复”。关闭标签页后可能丢失。分享游戏页面和房间码即可；使用自定义服务时，另行告诉朋友所选服务。不要分享浏览器存储内容。':'此浏览器不允许会话存储：刷新或关闭后可能无法恢复席位，请随时导出当前棋局。';
    candidate.start();message('已进入远程朋友房间。请等待实时连接就绪后落子；结束前请导出 JSON');
   }else{try{roomStorage?.setItem('infinite-go-room',JSON.stringify(session));}catch{}message('已连接局域网房间。房间数据仅保存在主机内存，结束前请导出');}
  }catch(e){
@@ -132,8 +135,10 @@ async function connect(join){
 $('host').onclick=()=>connect(false);$('join').onclick=()=>connect(true);
 $('leave').onclick=()=>{connectionEpoch++;remoteClient?.close();remoteClient=null;remoteState='idle';session=null;connecting=false;busy=false;networkLost=false;localNigiri=null;ai?.reset();try{roomStorage?.removeItem('infinite-go-room');}catch{}clearActiveRemoteSession(roomStorage);$('remoteStatus').textContent='已断开远程连接';render();message('已回到同屏模式，保留当前棋局副本；可导出或继续落子');};
 $('networkMode').onchange=()=>{if(!session&&!connecting){$('remoteStatus').textContent='';renderRoomControls();}};
-$('remoteEndpoint').oninput=()=>{if(!session&&!connecting)$('remoteStatus').textContent='尚未连接。请确认这是你信任的服务地址，再点同意连接';};
-$('copyRoom').onclick=async()=>{if(!session)return;try{await navigator.clipboard.writeText(session.code);message('已复制房间码。朋友还需要选择相同的 HTTPS 服务或打开相同的局域网页面');}catch{message('房间码：'+session.code+'，可手动复制');}};
+let customRemoteEndpoint='';
+$('remoteServiceMode').onchange=()=>{if(session||connecting)return;$('remoteEndpoint').value=defaultRemoteService()?DEFAULT_REMOTE_ENDPOINT:customRemoteEndpoint;$('remoteStatus').textContent='尚未连接。确认所选服务后，再点同意连接';renderRoomControls();};
+$('remoteEndpoint').oninput=()=>{if(!session&&!connecting){customRemoteEndpoint=$('remoteEndpoint').value;$('remoteStatus').textContent='尚未连接。请确认这是你信任的服务地址，再点同意连接';}};
+$('copyRoom').onclick=async()=>{if(!session)return;try{await navigator.clipboard.writeText(session.code);message(session.mode==='remote'?(defaultRemoteService()?'已复制房间码。朋友打开本网页，选择默认朋友房间服务并输入房间码即可':'已复制房间码。朋友还需选择相同的自定义服务'):'已复制房间码。朋友需打开相同的局域网页面');}catch{message('房间码：'+session.code+'，可手动复制');}};
 setInterval(async()=>{if(!session||session.mode==='remote'||busy||polling)return;const target=session,epoch=connectionEpoch;polling=true;try{const data=await request(`/api/rooms/${target.code}`);if(session!==target||epoch!==connectionEpoch)return;accept(data,target);if(networkLost){networkLost=false;message('局域网连接已恢复');}}catch(e){if(session===target&&epoch===connectionEpoch){networkLost=true;message(`连接中断：${e.message}。正在等待主机恢复，可导出当前副本`,true);}}finally{polling=false;}},1500);
 window.addEventListener('offline',()=>{remoteClient?.setOnline(false);renderRoomControls();});
 window.addEventListener('online',()=>{remoteClient?.setOnline(true);renderRoomControls();});
@@ -142,15 +147,16 @@ window.addEventListener('online',()=>{remoteClient?.setOnline(true);renderRoomCo
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)remoteClient?.reconnect();});
 window.addEventListener('pageshow',event=>{if(event.persisted&&navigator.onLine!==false)remoteClient?.reconnect();});
 $('networkMode').value=STATIC_HOST||DEFAULT_REMOTE_ENDPOINT?'remote':'lan';
+$('remoteServiceMode').options[0].disabled=!DEFAULT_REMOTE_ENDPOINT;
+$('remoteServiceMode').value=DEFAULT_REMOTE_ENDPOINT?'default':'custom';
 $('remoteEndpoint').value=DEFAULT_REMOTE_ENDPOINT;
-$('remoteConfigNote').textContent=DEFAULT_REMOTE_ENDPOINT?'已填入本网页配置的远程服务；朋友应使用同一地址。也可手动填写你信任的自建服务。':'默认远程服务尚未部署。可填入你或朋友部署的兼容 HTTPS 房间服务；仅填写完整源地址，不含路径或参数。';
 ai=setupAI({staticHost:STATIC_HOST,getGame:()=>game,getSelected:()=>selected,isLAN:()=>!!session,isSetupPending:()=>localNigiri?.phase==='guess',perform:act,onChange:render,message});
 const sharedCode=new URLSearchParams(location.search).get('room')||'';
 $('roomCode').value=sharedCode.slice(0,12);
 let remoteSaved=lastRemoteSession(roomStorage);
 if(sharedCode&&sharedCode.toUpperCase()!==remoteSaved?.code)remoteSaved=null;
 if(sharedCode.length===12)$('networkMode').value='remote';
-if(remoteSaved&&(!sharedCode||sharedCode.toUpperCase()===remoteSaved.code)){$('networkMode').value='remote';$('remoteEndpoint').value=remoteSaved.endpoint;$('roomCode').value=remoteSaved.code;$('remoteStatus').textContent='发现本标签页保存的房间。确认上方服务地址后，点击“同意连接并加入 / 恢复”';$('roomPanel').open=true;}
+if(remoteSaved&&(!sharedCode||sharedCode.toUpperCase()===remoteSaved.code)){$('networkMode').value='remote';$('remoteEndpoint').value=remoteSaved.endpoint;$('remoteServiceMode').value=DEFAULT_REMOTE_ENDPOINT&&remoteSaved.endpoint===remoteEndpoint(DEFAULT_REMOTE_ENDPOINT)?'default':'custom';if(!defaultRemoteService())customRemoteEndpoint=remoteSaved.endpoint;$('roomCode').value=remoteSaved.code;$('remoteStatus').textContent='发现本标签页保存的房间。确认所选服务后，点击“同意连接并加入 / 恢复”';$('roomPanel').open=true;}
 render();try{const saved=JSON.parse(roomStorage?.getItem('infinite-go-room'));if(!STATIC_HOST&&saved?.code&&saved?.token&&saved.mode!=='remote'&&!remoteSaved){session={...saved,mode:'lan',revision:-1};$('networkMode').value='lan';const target=session,epoch=connectionEpoch;request(`/api/rooms/${session.code}`).then(data=>{if(session===target&&epoch===connectionEpoch)accept(data,target);}).catch(e=>{if(session!==target||epoch!==connectionEpoch)return;session=null;render();message('房间未恢复：'+e.message,true);});}}catch{}
 
 $('showMoveNumbers').addEventListener('change',board);

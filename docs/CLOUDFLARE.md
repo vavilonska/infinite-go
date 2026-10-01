@@ -1,8 +1,10 @@
 # Cloudflare 免费熟人房间 / Free friend rooms
 
-这是独立于 LAN Node 服务的可选 HTTPS 后端。前端仍在 GitHub Pages，双方用浏览器打开同一网页，选择远程模式，填写同一个已部署的 HTTPS 服务地址；房主创建房间并私下分享房间码，朋友输入后加入。无需安装 App、VPN 或玩家账号。没有公共大厅、随机匹配、聊天或托管 AI。
+这是独立于 LAN Node 服务的可选 HTTPS 后端。前端仍在 GitHub Pages，双方用浏览器打开同一网页，选择远程模式和默认朋友房间服务；房主创建房间并私下分享房间码，朋友输入后加入。默认入口不显示后端网址；选择“自定义服务”后才显示 HTTPS 地址输入框，双方需填写同一个已部署的服务地址。无需安装 App、VPN 或玩家账号。没有公共大厅、随机匹配、聊天或托管 AI。
 
-**本仓库默认服务地址留空，直到部署者实际部署并验证。代码存在不代表公共服务已经上线。** 已发布 v0.2.2 Android APK 不包含这次入口；手机先用系统浏览器打开 Pages。旧 APK 的离线和房主地址加入功能不受影响。
+**默认朋友房间服务已于 2026-10-01 部署并验证，使用 Workers Free 与 SQLite Durable Objects。** [在线游戏](https://vavilonska.github.io/infinite-go/) · [后端健康检查](https://infinite-go-rooms.infinite-go.workers.dev/api/health)。已通过真实 HTTP/WebSocket smoke，以及同一电脑 Chrome 和内置浏览器的双会话落子、同步、分叉、刷新恢复与棋局导出验证；尚不代表手机或跨网络真机均已验证。已发布 v0.2.2 Android APK 不包含这次入口；手机先用系统浏览器打开 Pages。旧 APK 的离线和房主地址加入功能不受影响。
+
+旧页面若仍显示“默认服务尚未部署”或连接时停住，请先导出已有对局，再强制刷新（桌面浏览器通常为 Ctrl+Shift+R）。不要为更新页面清除游戏数据。
 
 ## 数据与边界
 
@@ -40,7 +42,7 @@ npx wrangler@4.145.0 deploy --config cloud/wrangler.jsonc
 
 ## English
 
-This optional HTTPS Worker backend reuses the authoritative game engine. Two friends use the Pages frontend, enter the same deployed service origin, then create/join using a private room code. No app, VPN, player accounts, matchmaking, chat or hosted AI is required. The default endpoint remains empty until an operator has actually deployed and verified it. The existing v0.2.2 APK does not include this new entrance; use a mobile browser for now.
+This optional HTTPS Worker backend reuses the authoritative game engine. Two friends use the Pages frontend, select the default friend-room service, then create/join using a private room code. The default interface hides the backend URL; selecting the custom service option reveals the HTTPS address field. No app, VPN, player accounts, matchmaking, chat or hosted AI is required. The default Workers Free service was deployed and verified on 2026-10-01 with a live HTTP/WebSocket smoke test and two browser sessions on one computer, including moves, synchronization, branching, refresh recovery and game export. Mobile devices and separate networks have not been verified. The existing v0.2.2 APK does not include this new entrance; use a mobile browser for now. If an older offline cache still shows an undeployed service or a stuck connection, export your game before a hard refresh; do not clear game data.
 
 Rooms expire 24 hours after creation. Export before expiry or an outage. Credentials are scoped to the endpoint and room in the current tab's sessionStorage, never put into share URLs or game exports. The operator can access game/setup data, so use a trusted service. Whoever first claims the second seat owns it; share codes privately.
 
