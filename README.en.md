@@ -24,7 +24,7 @@ Players provide their own LAN, virtual-LAN and AI backends. For games with frien
 
 ## Online and static editions
 
-GitHub Pages remains the static edition: same-screen play, saved games, LAN host-address navigation and explicitly configured self-hosted AI/room providers. It does not connect to a public backend by default. The [online edition](https://infinite-go-online.vavilonska7.chatgpt.site) provides remote friend rooms and anonymous matchmaking. Both editions share the same rules and interface; the static entrance does not silently connect to the online API.
+GitHub Pages remains the static edition: same-screen play, saved games, LAN host-address navigation and explicitly configured self-hosted AI/room providers. It does not connect to a public backend by default. Choose [Web 1 · Sites](https://infinite-go-online.vavilonska7.chatgpt.site) or [Web 2 · Cloudflare](https://infinite-go-rooms.infinite-go.workers.dev/) for remote friend rooms and anonymous matchmaking. Each has a separate room and matchmaking pool: friends must choose the same website. There is no automatic routing or cross-site game migration. The static entrance does not silently connect to either online API.
 
 There are no player accounts, rankings or chat. Share room codes privately and export before expiry. Capacity limits are explicit; see [matchmaking and verification](docs/MATCHMAKING.md).
 

@@ -24,7 +24,7 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 ## 在线联机版与静态版
 
-GitHub Pages 保持静态版本：同屏、存档、局域网房主地址跳转，以及主动配置的自托管 AI / 房间服务。它不默认连接公共后端。[在线联机版](https://infinite-go-online.vavilonska7.chatgpt.site)提供远程朋友房间和匿名匹配。两个站点共享同一套棋规和界面，静态版入口不会自动连接在线 API。
+GitHub Pages 保持静态版本：同屏、存档、局域网房主地址跳转，以及主动配置的自托管 AI / 房间服务。它不默认连接公共后端。[网页 1 · Sites](https://infinite-go-online.vavilonska7.chatgpt.site) 和 [网页 2 · Cloudflare](https://infinite-go-rooms.infinite-go.workers.dev/) 均提供远程朋友房间和匿名匹配，由玩家自行选择。两边房间和匹配池独立，和朋友请打开同一个网页；没有自动分流或跨站对局迁移。静态版入口不会自动连接在线 API。
 
 在线模式没有玩家账号、排名或聊天。请只分享房间码，提前导出对局；服务有明确容量与到期限制。部署与当前验证状态见 [匹配说明](docs/MATCHMAKING.md)。
 

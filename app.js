@@ -79,7 +79,7 @@ function renderRoomControls(){
  $('remoteCustomService').hidden=defaultRemoteService();
  $('remoteConfigNote').textContent=defaultRemoteService()?'双方使用本网页的默认在线服务，无需填写服务地址。':'请填写你或朋友部署的兼容 HTTPS 房间服务，只含完整源地址，不含路径或参数。双方必须选择同一自定义服务。';
  $('roomCode').maxLength=remote?12:8;$('roomCode').placeholder=remote?'远程房间码（12 位，必填）':'房间码（单局可留空）';
- $('host').textContent=remote?'同意连接并创建':'创建房间';$('join').textContent=remote?'同意连接并加入 / 恢复':'加入房间';
+ $('host').textContent=remote?'同意连接并随机创建房间':'随机创建房间';$('join').textContent=remote?'同意连接并加入 / 恢复':'加入房间';
  $('host').disabled=disabled||(remote?ANDROID_OFFLINE||navigator.onLine===false:STATIC_HOST);$('join').disabled=$('host').disabled;
  $('leave').disabled=!session&&!connecting;$('copyRoom').hidden=!session||gameMode==='matchmaking';$('connectedActions').hidden=!session&&!connecting;
  $('friendSetup').hidden=currentMode==='matchmaking'||!!session;$('matchmakingSetup').hidden=currentMode!=='matchmaking'||!!session;$('remoteOptions').hidden=!remote||!!session;
@@ -219,7 +219,7 @@ function renderNavigation(){
  if(session)$('roomPanel').open=true;
  $('onlineEditionPanel').hidden=!!DEFAULT_REMOTE_ENDPOINT||!['friends','matchmaking'].includes(currentMode)||playing;
  $('onlinePlayLink').hidden=!ONLINE_PLAY_URL;if(ONLINE_PLAY_URL)$('onlinePlayLink').href=ONLINE_PLAY_URL;
- $('onlineEditionStatus').textContent=ONLINE_PLAY_URL?'在线版提供朋友房间与匿名匹配。新标签页打开，当前棋局仍保留。':'在线联机版地址尚未配置。也可展开下方设置，连接你信任的兼容 HTTPS 服务。';
+ $('onlineEditionStatus').textContent=ONLINE_PLAY_URL?'两个网页均提供朋友房间与匿名匹配，房间和匹配池互不相通；和朋友选择同一个。新标签页打开，当前棋局仍保留。':'在线联机版地址尚未配置。也可展开下方设置，连接你信任的兼容 HTTPS 服务。';
  if(!DEFAULT_REMOTE_ENDPOINT&&['friends','matchmaking'].includes(currentMode)&&!session)$('roomHeading').textContent='高级选项 · 自定义 HTTPS 服务';
  $('roomInfo').hidden=currentMode==='matchmaking'&&!session;
  const aiPanel=document.querySelector('.ai-panel');if(aiPanel){const slot=playing?$('aiPlaySlot'):$('aiSetupSlot');if(aiPanel.parentNode!==slot)slot.append(aiPanel);aiPanel.hidden=currentMode!=='ai';}
