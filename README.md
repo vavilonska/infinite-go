@@ -1,8 +1,10 @@
 # Infinite Go · 无限围棋
 
-<img src="assets/icon.png" width="160" height="160" alt="Infinite Go ink-wash icon">
+[![Infinite Go — actual board and branching timelines](assets/social-preview.jpg)](assets/gameplay.jpg)
 
 中文 | [English](README.en.md)
+
+实机示例：同一历史分成三条棋线，权重为 1/4、1/2、1/4。点图查看完整棋盘与时间线树截图。
 
 **一手棋，一个世界。保留过去，探索另一种下法。**
 

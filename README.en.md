@@ -1,8 +1,10 @@
 # Infinite Go
 
-<img src="assets/icon.png" width="160" height="160" alt="Infinite Go ink-wash icon">
+[![Infinite Go — actual board and branching timelines](assets/social-preview.jpg)](assets/gameplay.jpg)
 
 [中文](README.md) | English
+
+Real gameplay example: one history branches into three timelines weighted 1/4, 1/2 and 1/4. Click the image for the full board and timeline-tree screenshot.
 
 **One move, another world. Keep the past and explore a different continuation.**
 

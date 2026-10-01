@@ -26,6 +26,7 @@ const STATIC_FILES = new Map([
   ['/providers.js', ['providers.js', 'text/javascript; charset=utf-8']],
   ['/ai.js', ['ai.js', 'text/javascript; charset=utf-8']],
   ['/deployment.js', ['deployment.js', 'text/javascript; charset=utf-8']],
+  ...['gameplay.jpg','social-preview.jpg'].map(name=>['/assets/'+name,['assets/'+name,'image/jpeg']]),
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
 ]);
 
