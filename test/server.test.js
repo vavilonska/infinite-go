@@ -184,7 +184,7 @@ test('malformed inputs, unknown routes, cross-site writes, and filesystem access
 
 test('server health, static assets, and bounded room creation', async t => {
   const { request, origin } = await host(t, { maxRooms: 1 });
-  assert.deepEqual((await request('/api/health')).data, { ok: true, mode: 'lan' });
+  assert.deepEqual((await request('/api/health')).data, { ok: true, mode: 'lan', features: { spectating: true, restoreGame: true, resultModes: true } });
   const asset = await fetch(`${origin}/engine.js`);
   assert.equal(asset.status, 200);
   assert.match(asset.headers.get('content-type'), /javascript/);
@@ -232,3 +232,29 @@ test('LAN nigiri keeps seats separate, hides count, lets winner select color and
  assert.equal((await setup(winner.token,{type:'choose',color:'B',revision:played.data.revision})).status,409);
 });
 test('manual LAN color choice can give the host White',async t=>{const {request}=await host(t);const a=(await request('/api/rooms',{method:'POST',body:{hostColor:'W',colorSetup:'manual'}})).data;assert.equal(a.role,'W');assert.equal((await request(`/api/rooms/${a.code}/join`,{method:'POST',body:{}})).data.role,'B');});
+
+test('LAN watch is read-only, leaves seats open and reveals no player credentials', async t=>{
+ const {request}=await host(t);const created=await request('/api/rooms',{method:'POST',body:{colorSetup:'nigiri'}});const a=created.data,path='/api/rooms/'+a.code;
+ const view=await request(path+'/watch');assert.equal(view.status,200);assert.equal(view.data.spectator,true);assert.equal(view.data.seat,null);assert.equal(view.data.role,null);assert.equal(view.data.players.W,false);assert.equal(view.data.token,undefined);assert.equal(view.data.setup.count,undefined);assert.equal(JSON.stringify(view.data).includes(a.token),false);
+ for(const suffix of ['/actions','/setup'])assert.equal((await request(path+suffix,{method:'POST',body:{}})).status,401);
+ assert.equal((await request(path+'/watch',{method:'POST',body:{}})).status,405);
+ assert.equal((await request(path+'/join',{method:'POST',body:{}})).status,200);
+ assert.equal((await request(path+'/watch')).data.players.W,true);
+});
+
+test('LAN restores new rooms and requires both authenticated players to confirm',async t=>{
+ const {request}=await host(t);const E=await import('../engine.js');const game=E.createGame(13,7.5,9,{resultMode:'weighted-margin',pruningMode:'komi'});E.play(game,1,0,0);
+ const made=await request('/api/rooms',{method:'POST',body:{restoreGame:game,hostColor:'W'}});assert.equal(made.status,201);const a=made.data,p='/api/rooms/'+a.code;assert.equal(a.game.size,13);assert.equal(a.game.resultMode,'weighted-margin');
+ const b=(await request(p+'/join',{method:'POST',body:{}})).data;
+ const action={type:'play',revision:b.revision,id:1,index:1,at:1};assert.equal((await request(p+'/actions',{method:'POST',token:a.token,body:action})).status,409);
+ assert.equal((await request(p+'/restore-confirm',{method:'POST',body:{revision:b.revision}})).status,401);
+ const one=await request(p+'/restore-confirm',{method:'POST',token:a.token,body:{revision:b.revision}});assert.equal(one.status,200);
+ const two=await request(p+'/restore-confirm',{method:'POST',token:b.token,body:{revision:one.data.revision}});assert.equal(two.status,200);assert.equal(two.data.restoration.pending,false);
+ assert.equal((await request(p+'/actions',{method:'POST',token:a.token,body:{...action,revision:two.data.revision}})).status,200);
+});
+
+test('new explicit result-mode creation requires an explicit board size',async t=>{const {request}=await host(t);assert.equal((await request('/api/rooms',{method:'POST',body:{resultMode:'weighted-margin'}})).status,400);});
+test('LAN active count ignores creation/join/watch and follows successful moves',async t=>{
+ const {request}=await host(t),a=(await request('/api/rooms',{method:'POST',body:{}})).data,p='/api/rooms/'+a.code;await request(p+'/join',{method:'POST',body:{}});await request(p+'/watch');assert.equal((await request('/api/stats')).data.activeRooms,0);
+ const played=await request(p+'/actions',{method:'POST',token:a.token,body:{type:'play',id:1,index:0,at:0,revision:1}});assert.equal(played.status,200);const stats=(await request('/api/stats')).data;assert.equal(stats.activeRooms,1);assert.equal(JSON.stringify(stats).includes(a.code),false);
+});

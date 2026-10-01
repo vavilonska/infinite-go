@@ -31,7 +31,7 @@ test('online assets accept version queries while API failures remain JSON and ne
   }
   assert.equal(fetched.length, 4);
   const health = await online.fetch(new Request('https://rooms.example/api/health'), { ...env, MATCHMAKING: {} });
-  assert.deepEqual(await health.json(), { ok: true, mode: 'cloud', protocol: 1, features: { matchmaking: true } });
+  assert.deepEqual(await health.json(), { ok: true, mode: 'cloud', protocol: 1, features: { matchmaking: true, spectating: true, restoreGame: true, resultModes: true } });
   assert.equal(fetched.length, 4);
 });
 
@@ -50,7 +50,7 @@ test('Cloudflare build is a clean frontend whitelist with same-origin API and ne
   await promisify(execFile)(process.execPath, ['cloud/build.mjs']);
   const files = (await readdir('cloud/dist', { recursive: true })).map(path => path.replaceAll('\\', '/')).sort();
   assert.deepEqual(files, [
-    '.nojekyll', 'LICENSE', 'NOTICE', 'ai.js', 'annotations.js', 'app.js', 'assets',
+    '.nojekyll', 'LICENSE', 'NOTICE', 'ai.js', 'ai-analysis.js', 'ai-worker.js', 'annotations.js', 'app.js', 'browser-ai', 'browser-provider.js', 'browser-ai/models.js', 'browser-ai/settings.js', 'browser-ai/dist', 'browser-ai/dist/engine.worker.js', 'browser-ai/dist/engine.worker.js.LEGAL.txt', 'browser-ai/dist/runtime-info.json', 'browser-ai/dist/THIRD-PARTY-LICENSES.txt', 'browser-ai/dist/wasm', 'browser-ai/dist/wasm/tfjs-backend-wasm.wasm', 'browser-ai/dist/wasm/tfjs-backend-wasm-simd.wasm', 'browser-ai/dist/wasm/tfjs-backend-wasm-threaded-simd.wasm', 'assets',
     'assets/apple-touch-icon.png', 'assets/favicon.png', 'assets/gameplay.jpg', 'assets/icon-192.png',
     'assets/icon.png', 'assets/social-preview.jpg', 'deployment.js', 'engine.js', 'host-address.js',
     'index.html', 'manifest.webmanifest', 'matchmaking-client.js', 'nigiri.js', 'providers.js',
@@ -85,3 +85,4 @@ test('Cloudflare build is a clean frontend whitelist with same-origin API and ne
   handlers.fetch({ request: { method: 'GET', mode: 'navigate', url: 'https://rooms.example/' }, respondWith(response) { page = response; } });
   assert.equal(await (await page).text(), 'cached page');
 });
+

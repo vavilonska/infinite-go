@@ -18,6 +18,7 @@ export function setupLocalAI({ onConnect = () => {}, onDisconnect = () => {} } =
   make('p', '仅此电脑的启动者可安装或启动。安装一次后可离线使用；关闭桌面启动器会停止本机 AI。', pane);
   const detail = make('p', '正在读取本机下载方案…', pane), links = make('p', '', pane);
   const statusText = make('p', '', pane); statusText.setAttribute('role', 'status'); statusText.setAttribute('aria-live', 'polite');
+  const downloadProgress=make('progress','',pane);downloadProgress.hidden=true;downloadProgress.setAttribute('aria-label','已下载字节');downloadProgress.style.width='100%';
   const consentRow = make('label', '', pane); consentRow.style.display = 'block';
   const consent = make('input', '', consentRow); consent.type = 'checkbox';
   consentRow.append(document.createTextNode(' 我已查看大小、来源和许可，同意下载并在此电脑解包安装'));
@@ -36,6 +37,7 @@ export function setupLocalAI({ onConnect = () => {}, onDisconnect = () => {} } =
     stop.hidden = current?.state !== 'running'; stop.disabled = busy; cancel.hidden = current?.state !== 'installing'; cancel.disabled = pending;
     const names = { idle: current?.installed ? '已安装，可离线启动' : '尚未安装', installing: '正在下载 / 安装', starting: '正在启动', stopping: '正在停止', running: '本机 AI 已启动' };
     statusText.textContent = current?.error || (names[current?.state] || '');
+    downloadProgress.hidden=current?.state!=='installing';if(current?.progress?.totalBytes>0){downloadProgress.max=current.progress.totalBytes;downloadProgress.value=Math.min(current.progress.downloadedBytes,current.progress.totalBytes);}else downloadProgress.removeAttribute('value');
     if (current?.state === 'installing' && current.progress) statusText.textContent += `：${size(current.progress.downloadedBytes)} / ${size(current.progress.totalBytes)} (${current.progress.phase})`;
   }
   function schedule() { clearTimeout(timer); if (!disposed && !pane.hidden) timer = setTimeout(refresh, current?.state === 'installing' ? 750 : 3000); }

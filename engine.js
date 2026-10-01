@@ -61,7 +61,10 @@ export function createGame(size=9,komi=7.5,branchLimitExponent=9,options={}) {
   if(![9,13,19].includes(size)||!Number.isFinite(komi)||Math.abs(komi)>100) fail('Use size 9, 13 or 19 and komi between -100 and 100');
   const pruningMode=options.pruningMode===undefined?'none':options.pruningMode,compensationC=parseC(options.compensationC===undefined?'32':options.compensationC).C;
   if(!['none','resign','komi'].includes(pruningMode))fail('Invalid pruning mode');
-  return {format:'infinite-go',version:2,size,komi,branchLimitExponent,pruningMode,compensationC,komiCompensation:zero(),archives:[],nextId:2,round:1,turns:{B:{epoch:1,pending:[1]},W:{epoch:1,pending:[1]}},queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
+  const resultMode=options.resultMode===undefined?'weighted-wins':options.resultMode,resignationMargin=options.resignationMargin===undefined?20:options.resignationMargin;
+  if(!['weighted-wins','weighted-margin'].includes(resultMode))fail('Invalid result mode');
+  if(!Number.isFinite(resignationMargin)||resignationMargin<=0||resignationMargin>1000||!Number.isInteger(resignationMargin*2))fail('认输目差须为 0.5 至 1000 的半目整数倍');
+  return {format:'infinite-go',version:3,size,komi,branchLimitExponent,pruningMode,compensationC,resultMode,resignationMargin,komiCompensation:zero(),archives:[],nextId:2,round:1,turns:{B:{epoch:1,pending:[1]},W:{epoch:1,pending:[1]}},queue:[1],lines:[{id:1,parent:null,forkAt:null,weight:fraction(),history:[],status:'playing',dead:[],approvals:[]}]};
 }
 export function canBranch(game,line) {
   if(game.pruningMode==='komi')return compare(half(line.weight),compensationInfo(game.compensationC).actualMin)>=0;
@@ -119,12 +122,23 @@ export function score(game,id) {
   let B=board.filter(x=>x==='B').length,W=board.filter(x=>x==='W').length; const visited=new Set();
   for(let i=0;i<board.length;i++) if(!board[i]&&!visited.has(i)) { const area=[],border=new Set(),todo=[i];visited.add(i);while(todo.length) {const p=todo.pop();area.push(p);for(const n of neighbors(p,game.size)) if(board[n]) border.add(board[n]);else if(!visited.has(n)) {visited.add(n);todo.push(n);} }if(border.size===1) {if(border.has('B'))B+=area.length;else W+=area.length;} }
   const exactW=add(fraction(W),exactKomi(game,l)),comparison=compare(fraction(B),exactW);
-  return {B,W:numeric(exactW),winner:comparison>0?'B':comparison<0?'W':'draw'};
+  return {B,W:numeric(exactW),whiteMargin:subtract(exactW,fraction(B)),winner:comparison>0?'B':comparison<0?'W':'draw'};
 }
 function freezeKomi(game,line) {line.frozenKomi={...exactKomi(game,line)};line.settledAtArchiveCount=(game.archives??[]).length;}
 export function approveScore(game,id,color) { const l=lineById(game,id);if(l.status!=='scoring'||!['B','W'].includes(color)) fail('Invalid scoring approval');if(!l.approvals.includes(color))l.approvals.push(color);if(l.approvals.length===2) {freezeKomi(game,l);l.result=score(game,id);l.status='settled';} }
 export function resume(game,id) {const l=lineById(game,id);if(l.status!=='scoring')fail('Only unsettled scoring can resume');const target=[...l.history,{type:'resume'}];if(continuationExists(game,target))fail('That continuation already exists or is archived');l.history=target;l.status='playing';l.dead=[];l.approvals=[];ensureRound(game);}
 export function totals(game) {const t={B:fraction(0),W:fraction(0),draw:fraction(0),unsettled:fraction(0)};for(const l of game.lines){const k=l.status==='settled'?l.result.winner:'unsettled';t[k]=add(t[k],l.weight);}return t;}
+export function resultSummary(game) {
+  const mode=game.resultMode??'weighted-wins',t=totals(game);let margin=zero();
+  if(mode==='weighted-margin')for(const line of game.lines)if(line.status==='settled') {
+    const result=score(game,line.id);
+    if(!result.whiteMargin)fail('Missing exact settled margin');
+    margin=add(margin,multiply(line.weight,result.whiteMargin));
+  }
+  const complete=compare(t.unsettled,zero())===0;
+  const winner=mode==='weighted-margin'?(complete?(compare(margin,zero())>0?'W':compare(margin,zero())<0?'B':'draw'):null):(majority(t.B)?'B':majority(t.W)?'W':complete?'draw':null);
+  return {mode,whiteMargin:margin,complete,winner,unsettled:t.unsettled};
+}
 export function pruningInfo(game,sourceId,index,actor) {
   if(!['resign','komi'].includes(game.pruningMode))fail('Pruning is disabled');
   const source=lineById(game,sourceId);if(!canActOn(game,sourceId))fail('This timeline is not eligible in the current player round');
@@ -140,7 +154,7 @@ export function pruningInfo(game,sourceId,index,actor) {
 }
 export function prune(game,sourceId,index,actor) {
   const info=pruningInfo(game,sourceId,index,actor),ids=new Set(info.affectedIds),affected=game.lines.filter(l=>ids.has(l.id)),before={...(game.komiCompensation??zero())};
-  if(info.mode==='resign') {for(const line of affected){freezeKomi(game,line);line.status='settled';line.result={winner:other(actor),reason:'resignation',resignedBy:actor};line.archived=true;line.approvals=[];}}
+  if(info.mode==='resign') {for(const line of affected){freezeKomi(game,line);line.status='settled';line.result={winner:other(actor),reason:'resignation',resignedBy:actor,...(game.resultMode==='weighted-margin'?{whiteMargin:multiply(decimalRational(game.resignationMargin),rational(actor==='B'?1:-1))}:{})};line.archived=true;line.approvals=[];}}
   const archived=affected.map(line=>({...structuredClone(line),archived:true,archivedKomi:{...exactKomi(game,line)}}));
   if(info.mode==='komi') {
     game.lines=game.lines.filter(l=>!ids.has(l.id));
@@ -157,12 +171,14 @@ function readRational(q,signed=false) {
   return signed?rational(q.n,q.d):fraction(q.n,q.d);
 }
 export function importGame(text) {
-  const g=JSON.parse(text);if(!g||g.format!=='infinite-go'||![1,2].includes(g.version))fail('Unsupported save');
+  const g=JSON.parse(text);if(!g||g.format!=='infinite-go'||![1,2,3].includes(g.version))fail('Unsupported save');
   const legacyTurns=g.version===1;
+  if(g.version<3){if(g.resultMode!==undefined&&g.resultMode!=='weighted-wins')fail('Legacy save cannot change result mode');g.resultMode='weighted-wins';g.resignationMargin=20;}
+  else if(g.resultMode===undefined||g.resignationMargin===undefined)fail('Missing result settings');
   const legacy=g.pruningMode===undefined&&g.compensationC===undefined&&g.komiCompensation===undefined&&g.archives===undefined;
   if(g.branchLimitExponent===undefined)g.branchLimitExponent=null;
   if(legacy){g.pruningMode='none';g.compensationC='32';g.komiCompensation=zero();g.archives=[];}
-  const validated=createGame(g.size,g.komi,g.branchLimitExponent,{pruningMode:g.pruningMode,compensationC:g.compensationC});
+  const validated=createGame(g.size,g.komi,g.branchLimitExponent,{pruningMode:g.pruningMode,compensationC:g.compensationC,resultMode:g.resultMode,resignationMargin:g.resignationMargin});
   if(g.pruningMode!==validated.pruningMode||g.compensationC===undefined)fail('Invalid pruning settings');g.compensationC=validated.compensationC;
   g.komiCompensation=readRational(g.komiCompensation,true);
   if(!Array.isArray(g.lines)||!g.lines.length||!Array.isArray(g.queue)||!Array.isArray(g.archives))fail('Invalid save');
@@ -188,8 +204,8 @@ export function importGame(text) {
   for(let i=0;i<g.lines.length;i++)for(let j=i+1;j<g.lines.length;j++)if(hasPrefix(g.lines[i].history,g.lines[j].history)||hasPrefix(g.lines[j].history,g.lines[i].history))fail('Overlapping timeline histories');
   const allIds=[...ids,...archiveIds];
   if(sum.n!==sum.d||!Number.isSafeInteger(g.nextId)||g.nextId<=Math.max(...allIds)||!Number.isSafeInteger(g.round)||g.round<1||new Set(g.queue).size!==g.queue.length||g.queue.some(id=>!ids.has(id)||lineById(g,id).status!=='playing'))fail('Invalid round or weights');
-  if(legacyTurns){const ids=activeIds(g);g.turns={B:{epoch:g.round,pending:[...ids]},W:{epoch:g.round,pending:[...ids]}};g.version=2;ensureRound(g);}
-  else {if(!g.turns||typeof g.turns!=='object')fail('Missing player turns');const active=activeIds(g);for(const color of ['B','W']){const t=g.turns[color];if(!t||!Number.isSafeInteger(t.epoch)||t.epoch<1||!Array.isArray(t.pending)||new Set(t.pending).size!==t.pending.length||t.pending.some(id=>!active.includes(id))||active.length&&!t.pending.length)fail('Invalid player turn snapshot');}if(active.length&&!g.queue.length||g.round!==Math.max(g.turns.B.epoch,g.turns.W.epoch)||JSON.stringify(g.queue)!==JSON.stringify(eligibleIds(g)))fail('Invalid eligible timeline list');}return g;
+  if(legacyTurns){const ids=activeIds(g);g.turns={B:{epoch:g.round,pending:[...ids]},W:{epoch:g.round,pending:[...ids]}};ensureRound(g);}
+  else {if(!g.turns||typeof g.turns!=='object')fail('Missing player turns');const active=activeIds(g);for(const color of ['B','W']){const t=g.turns[color];if(!t||!Number.isSafeInteger(t.epoch)||t.epoch<1||!Array.isArray(t.pending)||new Set(t.pending).size!==t.pending.length||t.pending.some(id=>!active.includes(id))||active.length&&!t.pending.length)fail('Invalid player turn snapshot');}if(active.length&&!g.queue.length||g.round!==Math.max(g.turns.B.epoch,g.turns.W.epoch)||JSON.stringify(g.queue)!==JSON.stringify(eligibleIds(g)))fail('Invalid eligible timeline list');}g.version=3;return g;
   function validateLine(l,inArchive) {
     if(!Array.isArray(l.history)||!['playing','scoring','settled'].includes(l.status))fail('Invalid timeline');
     const s=replay(l.history,g.size),resignation=l.result?.reason==='resignation';
@@ -199,7 +215,7 @@ export function importGame(text) {
     if(!Array.isArray(l.dead)||new Set(l.dead).size!==l.dead.length||l.dead.some(p=>!Number.isInteger(p)||!s.board[p]))fail('Invalid dead stones');for(const p of l.dead)if(group(s.board,p,g.size).stones.some(n=>!l.dead.includes(n)))fail('Partial dead group');
     if(!Array.isArray(l.approvals)||l.approvals.some(c=>!['B','W'].includes(c))||new Set(l.approvals).size!==l.approvals.length)fail('Invalid approvals');
     if(l.status==='settled') {
-      if(!resignation&&l.approvals.length!==2)fail('Missing score approval');if(resignation&&l.approvals.length)fail('Invalid resignation approvals');
+      if(!resignation&&l.approvals.length!==2)fail('Missing score approval');if(resignation&&l.approvals.length)fail('Invalid resignation approvals');if(resignation&&g.resultMode==='weighted-margin'){const expected=multiply(decimalRational(g.resignationMargin),rational(l.result.resignedBy==='B'?1:-1));if(!l.result.whiteMargin||compare(readRational(l.result.whiteMargin,true),expected))fail('Invalid resignation margin');}
       if(legacy){l.frozenKomi=decimalRational(g.komi);l.settledAtArchiveCount=0;}
       l.frozenKomi=readRational(l.frozenKomi,true);const count=l.settledAtArchiveCount;
       if(!Number.isSafeInteger(count)||count<0||count>=ledger.length||compare(l.frozenKomi,add(decimalRational(g.komi),ledger[count])))fail('Invalid frozen komi');

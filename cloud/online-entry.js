@@ -2,13 +2,14 @@ import api from './worker.js';
 export { GameRoom, RoomCreationLimiter, MatchmakingQueue } from './worker.js';
 
 export default {
-  fetch(request, env) {
+  fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     // API errors and room WebSocket upgrades always stay with the authority.
     // Assets may carry the generated cache-version query; API queries may not.
     if (pathname === '/api' || pathname.startsWith('/api/') || request.headers.has('Upgrade')) {
-      return api.fetch(request, env);
+      return api.fetch(request, env, ctx);
     }
     return env.ASSETS.fetch(request);
   },
 };
+

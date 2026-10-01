@@ -16,18 +16,19 @@ export function tokenFromRequest(request) {
   return token;
 }
 export function normalizeMatchOptions(options) {
-  fields(options, ['size', 'komi', 'branchLimitExponent', 'pruningMode', 'compensationC', 'rules']);
+  fields(options, ['size', 'komi', 'branchLimitExponent', 'pruningMode', 'compensationC', 'rules', 'resultMode', 'resignationMargin']);
   if (options.rules !== undefined && options.rules !== 'infinite-go-v2') reject(400, 'Unsupported matchmaking rules');
+  if(Object.hasOwn(options,'resultMode')&&!Object.hasOwn(options,'size'))reject(400,'Choose a board size');
   if (options.size === null || options.komi === null) reject(400, 'Size and komi cannot be null');
   let game;
   try {
     game = createGame(options.size ?? 9, options.komi ?? 7.5,
       Object.hasOwn(options, 'branchLimitExponent') ? options.branchLimitExponent : 9,
-      { pruningMode: options.pruningMode, compensationC: options.compensationC });
+      { pruningMode: options.pruningMode, compensationC: options.compensationC, resultMode:options.resultMode,resignationMargin:options.resignationMargin });
   } catch (error) { reject(400, error.message); }
   // Include even currently inactive settings. Matching never changes game rules.
   return { rules: 'infinite-go-v2', size: game.size, komi: game.komi,
-    branchLimitExponent: game.branchLimitExponent, pruningMode: game.pruningMode, compensationC: game.compensationC };
+    branchLimitExponent: game.branchLimitExponent, pruningMode: game.pruningMode, compensationC: game.compensationC, resultMode:game.resultMode, resignationMargin:game.resignationMargin };
 }
 export const matchKey = options => JSON.stringify(normalizeMatchOptions(options));
 const emptyState = () => ({ tickets: {}, pairs: {}, traffic: {}, starts: {} });

@@ -66,3 +66,26 @@ test('D1 8-way queue contention: each admitted logical request is charged once',
  assert.equal(new Set(recovered.map(r=>r.room.code)).size,4);
  assert.equal(new Set(recovered.map(r=>r.room.token)).size,8);
 });
+
+test('D1 spectators read without seats or credentials and cannot mutate',async()=>{
+ const {call}=service();const a=await call('/api/rooms',{size:9,colorSetup:'nigiri'}),path='/api/rooms/'+a.code;
+ const view=await call(path+'/watch');assert.equal(view.status,200);assert.equal(view.spectator,true);assert.equal(view.role,null);assert.equal(view.seat,null);assert.equal(view.players.W,false);assert.equal(view.setup.count,undefined);assert.equal(view.token,undefined);assert.equal(JSON.stringify(view).includes(a.token),false);
+ assert.equal((await call(path+'/actions',{type:'play',revision:0,id:1,index:0,at:0})).status,401);
+ assert.equal((await call(path+'/setup',{type:'guess',guess:'odd',revision:0})).status,401);
+ assert.equal((await call(path+'/watch',{})).status,405);
+ const b=await call(path+'/join',{});assert.equal(b.status,200);assert.equal((await call(path+'/watch')).revision,1);
+});
+
+test('D1 restored positions require two fresh seat confirmations before actions',async()=>{
+ const {call}=service(),E=await import('../engine.js');const game=E.createGame(9,7.5,9,{resultMode:'weighted-margin',pruningMode:'komi'});const a=await call('/api/rooms',{restoreGame:game,hostColor:'B'});assert.equal(a.status,201);const p='/api/rooms/'+a.code,b=await call(p+'/join',{});
+ const action={type:'play',id:1,index:0,at:0,revision:b.revision};assert.equal((await call(p+'/actions',action,a.token)).status,409);
+ const one=await call(p+'/restore-confirm',{revision:b.revision},a.token);assert.equal(one.status,200);
+ const two=await call(p+'/restore-confirm',{revision:one.revision},b.token);assert.equal(two.status,200);assert.equal(two.restoration.pending,false);
+ assert.equal((await call(p+'/actions',{...action,revision:two.revision},a.token)).status,200);
+});
+test('D1 activity counts are post-commit and omit room identifiers',async()=>{
+ const {call}=service(),a=await call('/api/rooms',{size:9}),p='/api/rooms/'+a.code;await call(p+'/join',{});assert.equal((await call('/api/stats')).activeRooms,0);
+ const r=await call(p+'/actions',{type:'play',id:1,index:0,at:0,revision:1},a.token);assert.equal(r.status,200);
+ for(let i=0;i<10;i++)await new Promise(resolve=>setImmediate(resolve));
+ const stats=await call('/api/stats');assert.equal(stats.activeRooms,1);assert.equal(JSON.stringify(stats).includes(a.code),false);
+});

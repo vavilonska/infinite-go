@@ -8,3 +8,11 @@ Source code: https://github.com/vavilonska/infinite-go
 
 Third-party software and models, when obtained separately, retain their own
 licenses. No KataGo executable or model is distributed with this project.
+
+Optional browser analysis includes selected Web KatRain source files,
+Copyright (c) 2026 Web KatRain Contributors, under the MIT License.
+The fixed upstream revision and full license are in browser-ai/UPSTREAM.md
+and browser-ai/UPSTREAM-LICENSE. Browser builds include TensorFlow.js
+(Apache-2.0), pako (MIT/Zlib), and their retained license notices.
+Runtime THIRD-PARTY-LICENSES.txt and engine.worker.js.LEGAL.txt accompany
+the generated browser worker. Model weights remain separate downloads.

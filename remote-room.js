@@ -132,7 +132,7 @@ export class RemoteRoomClient {
           ![undefined, 'websocket', 'polling'].includes(data.transport)) {
           throw new RemoteRoomError('远程服务的房间协议不兼容，请检查服务地址', { status: 400 });
         }
-        this.transport = data.transport || 'websocket';
+        this.capabilities=data.features||{};this.transport = data.transport || 'websocket';
         return this.transport;
       }).finally(() => { this.negotiation = null; });
     }
@@ -159,6 +159,8 @@ export class RemoteRoomClient {
   async create(options) {
     if (this.room) throw new Error('请先离开当前房间');
     await this.negotiateTransport();
+    if(options?.restoreGame&&!this.capabilities?.restoreGame)throw new Error('此服务尚未支持 JSON 恢复，请更新后端');
+    if(options?.resultMode==='weighted-margin'&&!this.capabilities?.resultModes)throw new Error('此服务尚未支持目差终局，请更新后端');
     return this.adopt(await this.request('/api/rooms', options));
   }
 
@@ -186,7 +188,7 @@ export class RemoteRoomClient {
   }
 
   async mutate(kind, body) {
-    if (!['actions', 'setup'].includes(kind) || !this.room) throw new Error('远程房间尚未连接');
+    if (!['actions', 'setup', 'restore-confirm'].includes(kind) || !this.room) throw new Error('远程房间尚未连接');
     if (this.status !== 'connected') throw new Error('正在恢复远程连接，请稍候再操作');
     try {
       const data = await this.request('/api/rooms/' + this.room.code + '/' + kind, body, this.room.token);
@@ -342,4 +344,37 @@ export class RemoteRoomClient {
     for (const controller of this.controllers) controller.abort();
     this.controllers.clear();
   }
+}
+
+// Room-code-only, read-only transport. Never acquires or stores player credentials.
+export class SpectatorRoomClient {
+  constructor({endpoint,fetchImpl=globalThis.fetch.bind(globalThis),onSnapshot=()=>{},onStatus=()=>{},setTimer=globalThis.setTimeout.bind(globalThis),clearTimer=globalThis.clearTimeout.bind(globalThis)}) {
+    this.endpoint=endpoint.replace(/\/$/,'');this.fetch=fetchImpl;this.onSnapshot=onSnapshot;this.onStatus=onStatus;this.setTimer=setTimer;this.clearTimer=clearTimer;this.closed=false;this.paused=false;this.online=true;this.revision=-1;this.attempt=0;
+  }
+  async watch(code) {
+    if(!/^(?:[A-HJ-NP-Z2-9]{6}|[A-HJ-NP-Z2-9]{12})$/.test(code))throw new Error('请输入有效房间码（局域网 6 位，远程 12 位）');
+    this.code=code;return this.read();
+  }
+  async read() {
+    if(this.closed)throw new Error('观战已结束');
+    const controller=new AbortController();this.controller=controller;
+    const timeout=this.setTimer(()=>controller.abort(),15000);
+    try {
+      const response=await this.fetch(this.endpoint+'/api/rooms/'+this.code+'/watch',{signal:controller.signal,credentials:'omit',cache:'no-store'});
+      const data=await response.json();
+      if(!response.ok){const error=new Error(response.status===404?'房间不存在，或此服务尚未支持观战':data.error||'观战连接失败');error.status=response.status;throw error;}
+      if(data.spectator!==true||data.token!==undefined||data.role!==null||data.seat!==null||!validSnapshot({...data,seat:'A'},this.code))throw new Error('服务返回的观战局面无效');
+      if(this.closed)throw new Error('观战已结束');
+      if(data.revision>=this.revision){this.revision=data.revision;this.onSnapshot(data);}
+      this.attempt=0;return data;
+    }finally{this.clearTimer(timeout);if(this.controller===controller)this.controller=null;}
+  }
+  start(){if(!this.closed&&!this.paused&&this.online){this.onStatus({state:'connected'});this.schedule();}}
+  schedule(delay=5000){this.clearTimer(this.timer);if(!this.closed&&!this.paused&&this.online)this.timer=this.setTimer(()=>this.poll(),delay);}
+  async poll(){if(this.closed||this.paused||!this.online||this.reading)return;this.reading=true;try{await this.read();if(!this.closed&&!this.paused&&this.online)this.onStatus({state:'connected'});}catch(error){if(this.closed||this.paused||!this.online)return;if([401,403,404,410].includes(error.status)){this.close();this.onStatus({state:'ended',reason:error.message});return;}this.attempt++;this.onStatus({state:'reconnecting',delay:Math.min(30000,5000*2**this.attempt)});}finally{this.reading=false;this.schedule(Math.min(30000,5000*2**this.attempt));}}
+  setPaused(paused){this.paused=paused;this.clearTimer(this.timer);if(paused){this.controller?.abort();this.onStatus({state:'paused'});}else this.schedule(0);}
+  setOnline(online){this.online=online;this.clearTimer(this.timer);if(!online){this.controller?.abort();this.onStatus({state:'offline'});}else this.schedule(0);}
+  reconnect(){if(!this.closed&&!this.paused&&this.online)this.schedule(0);}
+  mutate(){throw new Error('观战为只读，不能修改棋局');}
+  close(){this.closed=true;this.clearTimer(this.timer);this.controller?.abort();}
 }

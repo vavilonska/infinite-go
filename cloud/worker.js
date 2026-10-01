@@ -1,3 +1,4 @@
+import {confirmRestoration} from '../room-restore.js';
 import {
   CODE_RE, LIMITS, ROOM_TTL_MS, HttpError, reject, fields, newCode,
   createRoom, snapshot, authenticate, authenticateToken, assertCapacity,
@@ -34,7 +35,7 @@ async function creationBucket(request) {
   return (digest[0] * 256 + digest[1]) % 256;
 }
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     let cors = {};
     try {
       cors = corsHeaders(request, env);
@@ -46,7 +47,8 @@ export default {
         if (method && !['GET', 'POST'].includes(method) || requested.some(value => !['authorization', 'content-type'].includes(value))) reject(403, 'Unsupported cross-origin request');
         return new Response(null, { status: 204, headers: cors });
       }
-      if (url.pathname === '/api/health' && request.method === 'GET') return withCors(json(200, { ok: true, mode: 'cloud', protocol: 1, features: { matchmaking: Boolean(env.MATCHMAKING) } }), cors);
+      if(url.pathname==='/api/stats'&&request.method==='GET')return withCors(await env.ROOM_CREATION.getByName('creation-v1').fetch(new Request('https://limiter.internal/active')),cors);
+      if (url.pathname === '/api/health' && request.method === 'GET') return withCors(json(200, { ok: true, mode: 'cloud', protocol: 1, features: { matchmaking: Boolean(env.MATCHMAKING), spectating: true, restoreGame: true, resultModes: true } }), cors);
       if (/^\/api\/matchmaking\/(start|status|cancel)$/.test(url.pathname)) {
         if (!env.MATCHMAKING) reject(503, 'Matchmaking is not enabled on this backend', { errorCode: 'MATCHMAKING_UNAVAILABLE', recoverable: true });
         const action = url.pathname.split('/').at(-1);
@@ -63,7 +65,8 @@ export default {
         return withCors(response, cors);
       }
       if (url.pathname === '/api/rooms' && request.method === 'POST') {
-        const options = await readJson(request);
+        const options = await readJson(request, 100000);
+        if(!options?.restoreGame&&byteLength(JSON.stringify(options))>LIMITS.requestBytes)reject(413,'Request body is too large');
         // Validate before consuming a creation slot or allocating a room object.
         createRoom('VALIDATION00', options);
         const gate = env.ROOM_CREATION.getByName('creation-v1');
@@ -76,13 +79,18 @@ export default {
         }
         reject(503, 'Could not allocate a room; try again');
       }
-      const match = /^\/api\/rooms\/([A-Za-z2-9]{12})(?:\/(join|actions|setup|events))?$/.exec(url.pathname);
+      const match = /^\/api\/rooms\/([A-Za-z2-9]{12})(?:\/(join|actions|setup|events|watch|restore-confirm))?$/.exec(url.pathname);
       if (!match || !CODE_RE.test(match[1].toUpperCase())) reject(404, 'Not found');
       const path = match[2] || '';
-      if (!((!path || path === 'events') && request.method === 'GET' || ['join', 'actions', 'setup'].includes(path) && request.method === 'POST')) reject(405, 'Method not allowed');
+      if (!((!path || path === 'events' || path === 'watch') && request.method === 'GET' || ['join', 'actions', 'setup', 'restore-confirm'].includes(path) && request.method === 'POST')) reject(405, 'Method not allowed');
       if (path === 'events' && request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') reject(426, 'A WebSocket upgrade is required');
       if (path !== 'events' && request.headers.has('Upgrade')) reject(400, 'Use the events endpoint for WebSockets');
       const response = await env.ROOMS.getByName(match[1].toUpperCase()).fetch(request);
+      const actionTime=Number(response.headers.get('X-Game-Action-At'));
+      if(path==='actions'&&response.ok&&actionTime>0){
+        const report=env.ROOM_CREATION.getByName('creation-v1').fetch(new Request('https://limiter.internal/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:match[1].toUpperCase(),at:actionTime})})).catch(()=>{});
+        if(ctx?.waitUntil)ctx.waitUntil(report);else await report;
+      }
       return withCors(response, cors);
     } catch (error) { return withCors(errorResponse(error), cors); }
   },
@@ -131,7 +139,7 @@ export class GameRoom {
   async fetch(request) {
     try {
       // Finish reading the request before choosing a revision; parsing may yield.
-      const body = request.method === 'POST' ? await readJson(request) : undefined;
+      const body = request.method === 'POST' ? await readJson(request,new URL(request.url).pathname==='/create'?102000:LIMITS.requestBytes) : undefined;
       return await this.exclusive(() => this.handleRequest(request, body));
     } catch (error) { return errorResponse(error); }
   }
@@ -179,6 +187,10 @@ export class GameRoom {
       await this.charge();
       // Re-read after the storage gate; all mutations use the authoritative revision.
       const room = this.room;
+      if (path.endsWith('/watch') && request.method === 'GET') {
+        await this.charge('spectators', 30);
+        return json(200, { ...snapshot(room, null), spectator: true });
+      }
       if (path.endsWith('/events') && request.method === 'GET') return await this.connect(request);
       if (path.endsWith('/join') && request.method === 'POST') {
         fields(body, []);
@@ -191,11 +203,14 @@ export class GameRoom {
       await this.charge(seat, LIMITS.actionsPerSeatPerMinute);
       const current = this.room;
       let next;
-      if (path.endsWith('/setup')) next = applySetup(current, seat, body);
+      if(path.endsWith('/restore-confirm'))next=confirmRestoration(current,seat,body);
+      else if (path.endsWith('/setup')) next = applySetup(current, seat, body);
       else if (path.endsWith('/actions')) next = applyAction(current, seat, body);
       else reject(405, 'Method not allowed');
+      const changed=path.endsWith('/actions')&&body.type!=='approveScore'&&JSON.stringify(next.game)!==JSON.stringify(current.game);
+      if(changed)next.lastGameActionAt=Date.now();
       await this.save(next, seat);
-      return json(200, snapshot(next, seat));
+      return json(200, snapshot(next, seat),changed?{'X-Game-Action-At':String(next.lastGameActionAt)}:{});
     } catch (error) { return errorResponse(error); }
   }
   sockets() { return this.ctx.getWebSockets().filter(ws => ws.readyState === 1); }
@@ -281,12 +296,21 @@ export class GameRoom {
 export class RoomCreationLimiter {
   constructor(ctx) {
     this.ctx = ctx;
-    this.counts = {};
+    this.counts = {};this.activity={};
     this.serial = Promise.resolve();
-    this.ready = ctx.blockConcurrencyWhile(async () => { this.counts = await ctx.storage.get('counts') || {}; });
+    this.ready = ctx.blockConcurrencyWhile(async () => { this.counts = await ctx.storage.get('counts') || {};this.activity=await ctx.storage.get('activity')||{}; });
   }
   async fetch(request) {
     try {
+      const path=new URL(request.url).pathname;
+      if(path==='/active'&&request.method==='GET'){
+        await this.ready;const now=Date.now();return json(200,{ok:true,activeRooms:Object.values(this.activity).filter(at=>at>now-300000&&at<=now).length,windowSeconds:300,asOf:now,approximate:true});
+      }
+      if(path==='/activity'&&request.method==='POST'){
+        const body=await readJson(request);fields(body,['code','at'],['code','at']);
+        if(!CODE_RE.test(body.code)||!Number.isSafeInteger(body.at)||body.at>Date.now()||body.at<Date.now()-300000)reject(400,'Invalid activity report');
+        const result=this.serial.then(async()=>{await this.ready;const now=Date.now(),next=Object.fromEntries(Object.entries(this.activity).filter(([,at])=>at>now-300000));if(!Object.hasOwn(next,body.code)&&Object.keys(next).length>=200)reject(429,'Activity capacity reached',{retryAfterMs:60000});next[body.code]=Math.max(next[body.code]||0,body.at);await this.ctx.storage.put('activity',next);this.activity=next;return json(200,{ok:true});});this.serial=result.catch(()=>{});return await result;
+      }
       const body = await readJson(request);
       fields(body, ['bucket', 'allocationId'], ['bucket']);
       if (body.allocationId !== undefined && (typeof body.allocationId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.allocationId))) reject(400, 'Invalid allocation');

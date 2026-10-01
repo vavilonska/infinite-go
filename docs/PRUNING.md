@@ -1,6 +1,6 @@
 # Experimental subtree pruning
 
-Configure one mode at game creation: **none** (default), **resign**, or **komi compensation**. Changing the next-game controls does not change a game already in progress. The LAN server validates the same rules as the local engine. AI currently never chooses pruning automatically.
+Configure one mode at game creation: **none**, **resign**, or **komi compensation** (new-game UI default). Changing the next-game controls does not change a game already in progress. The LAN server validates the same rules as the local engine. AI currently never chooses pruning automatically.
 
 ## Target and turn
 
@@ -14,7 +14,7 @@ On any leaf eligible for the pruning player's independent round, select a histor
 
 ## Resign mode
 
-All target leaves are settled as actual wins for the pruning player's opponent. Their total weight **W** counts in the formal match result. Other weights do not change. These are actual resignation outcomes, not AI evaluations. Settled archived leaves remain visible and frozen.
+All target leaves are settled as actual wins for the pruning player's opponent. Their total weight **W** counts in the formal match result. In weighted-margin games, every affected leaf instead contributes its own weight times the configured signed resignation margin (White-positive); the pruning player loses those points. The pregame penalty defaults to 20 and accepts 0.5–1000 points in half-point steps. It is not measured score, and archived copies are never counted twice. Other weights do not change. These are actual resignation outcomes, not AI evaluations. Settled archived leaves remain visible and frozen.
 
 ## Komi-compensation mode
 

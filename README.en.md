@@ -44,12 +44,14 @@ cd infinite-go
 npm start
 ```
 
-Open `http://localhost:8000`. Choose **9 / 13 / 19** lines (default 9), with configurable komi (default 7.5). The initial branching threshold defaults to **1/512**; options include 1/4 through 1/512, a custom negative integer power of two, or unlimited.
+Open `http://localhost:8000`. Choose **9 / 13 / 19** lines (explicit selection required for each new game), with configurable komi (default 7.5). New games default to komi mode C32 with a **1/64** minimum newborn leaf; the manual threshold outside komi mode defaults to **1/512**; options include 1/4 through 1/512, a custom negative integer power of two, or unlimited.
 
 - Same screen: share the page, tap a position to preview, then confirm the move
 - LAN: create a room; the other device opens the host's LAN address and joins directly if only one room is available. With multiple rooms, enter the six-character code. In manual mode the host chooses Black or White. Alternatively, use a nigiri room: the joining player guesses parity and the winner chooses a color. See the [LAN guide](docs/LAN.md)
 - Offline same-screen play without rooms: serve statically with `python3 -m http.server 8000`, or use `HOST=127.0.0.1 npm start` to listen only on the local machine (PowerShell: `$env:HOST='127.0.0.1'`)
 - Do not open the HTML file directly: ES modules need an HTTP server
+- A friend-room host can restore JSON into a **new** room: saved size/rules/history are retained, new credentials are issued, and both players confirm before continuing. The original room is unchanged. See [restore details](docs/RESTORE.md)
+- Enter a room code to [spectate read-only](docs/SPECTATING.md) without taking a seat; the selected backend must support it
 - Export JSON before leaving. Refreshing loses an unexported same-screen game. LAN rooms live in server memory and disappear when the server stops. Exports exclude reconnection credentials
 
 **Do not expose the room server to the public Internet or forward router ports.** HTTP is unencrypted and intended for trusted home/friend networks. The app does not change firewall settings.
@@ -71,7 +73,7 @@ The board-side move-number toggle labels surviving stones with their actual move
 2. On an eligible leaf, either play normally or use the history slider to return to an earlier node where your color was to move, then choose a different move
 3. The old leaf keeps its entire history. The new leaf contains the shared history prefix plus the alternative move. Each receives **half** the source leaf's weight
 4. Branching consumes the actor's opportunity on the source leaf, whose board turn remains unchanged. The newborn joins each player's next round snapshot. To prevent mutual waiting after branches, branching also defers the opponent's unused current opportunity on the old source to the next round. Ordinary moves do not defer the opponent's opportunity
-5. A branch may branch again, but its parent weight must be **strictly greater than the configured threshold**. At or below it, only ordinary continuation is allowed. The strictest threshold is 1/4; the loosest is unlimited. For example, 1/2 splits into two 1/4 leaves, neither of which can branch again with a 1/4 threshold
+5. Outside komi mode, a branch may branch again, but its parent weight must be **strictly greater than the configured threshold**. At or below it, only ordinary continuation is allowed. The strictest threshold is 1/4; the loosest is unlimited. For example, 1/2 splits into two 1/4 leaves, neither of which can branch again with a 1/4 threshold
 6. Unlimited sets no branch-count, quantity, depth or weight cap; memory and device performance still impose practical limits. Custom exponents range from 2 to 4096, giving threshold `1 / 2^exponent`, compared with exact integers. Settings are fixed at game creation and preserved in exports. Older saves without a threshold retain their original unlimited rule
 
 The list and tree use black/white stones to identify the player who can act. Red plus text indicates waiting for that player's remaining work; information does not depend on color alone. See [independent turns and save migration](docs/TURNS.md).
@@ -85,20 +87,24 @@ An existing outgoing edge from an identical full-history prefix cannot be duplic
 - Both players mark whole dead groups. Chinese-style area scoring counts living stones, single-color enclosed empty points and White komi; neutral/shared empty points belong to neither player
 - Changing dead stones clears both approvals. Settlement requires both players' approval. Disputes may resume play while retaining the previous superko history
 - There is no automatic life-and-death referee. Disputed seki or ko should be played out or agreed upon; engine estimates are not formal rulings
-- Sum the exact rational weights of **actually settled wins**. Strictly more than **1/2** locks in the overall winner; remaining games may still finish. If all finish without either side exceeding half, the overall result is a draw
+- **Weighted margin (new-game default):** after all boards settle, sum each leaf’s exact weight times its final White-positive score margin including effective komi. Positive means White wins, negative Black, zero a draw. Partial totals never declare an early winner. Komi compensation is already included, not added twice
+- **Weighted wins (optional; retained by old saves):** settled winning weights strictly above one half lock in victory; otherwise the completed match is drawn
+- Margin-mode resignation pruning uses a pregame agreed penalty (default 20 points, 0.5–1000 in half-point steps), counted once per affected leaf at its own weight. This is a configured forfeit score, not measured territory or an AI estimate
 - The UI shows both completed/total branches and settled weight; these measure different things
 
 Weights are arbitrary-precision `BigInt` fractions stored as decimal strings. Percentages and AI charts are approximate displays only.
 
 ## Optional experimental pruning
 
-Choose no pruning (default), resignation pruning or komi-compensation pruning when creating a game. Select a non-root history node on an eligible leaf; pruning targets the entire unsettled subtree sharing that full prefix, with a preview before confirmation. See [complete pruning rules and formulas](docs/PRUNING.md).
+New games default to weighted score margin and komi-compensation pruning; weighted wins, no pruning and resignation pruning remain selectable. Select a non-root history node on an eligible leaf; pruning targets the entire unsettled subtree sharing that full prefix, with a preview before confirmation. See [complete pruning rules and formulas](docs/PRUNING.md).
 
 Compensation C offers **8 / 32 / 256 / custom**, default 32. Custom input shows the actual minimum newborn-leaf weight, percentage, raw minimum compensation and amount rounded upward to a half-point. For example, C20 uses **1/32 (3.125%)**, raw **0.625 points**, rounded to **1 point**, rather than the theoretical 1/40.
 
 This is experimental pricing. It does not claim komi is equivalent to win probability, or guarantee that repeated pruning and branching terminate in finitely many moves.
 
 ## Optional AI
+
+The separate [AI settings](docs/AI-SETTINGS.md) support HTTP providers or optional [browser inference](docs/BROWSER-AI.md). Build its runtime first; weights load separately after consent. Human-human mode shows win rates only. The menu can display a per-site [recent game activity count](docs/ACTIVITY.md), not online presence.
 
 The portable desktop launcher opens an owner-only local AI panel. Windows/Linux x64 can review sources, sizes and licenses, approve a verified CPU KataGo + small-model download, then start and connect. macOS requires manual setup/provider connection. Management and the bridge stay loopback-only; phone/LAN guests do not control or share this AI. See [local AI instructions](docs/LOCAL-AI.md).
 

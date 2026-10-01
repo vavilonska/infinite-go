@@ -1,6 +1,6 @@
 # Optional analysis and move providers
 
-Infinite Go can use an explicitly selected HTTP provider for suggestions and automated moves. It works without one. Provider evaluations are advisory estimates; they never determine a settled timeline's winner or its exact fractional match weight.
+Infinite Go can use an explicitly selected HTTP provider or the optional browser provider. Human-human play displays win rates only; suggestions are not exposed and autoplay requires the AI-game mode. It works without one. Provider evaluations are advisory estimates; they never determine a settled timeline's winner or its exact fractional match weight.
 
 ## Local KataGo adapter
 
@@ -60,3 +60,8 @@ There is no automatic final dead-stone adjudication. After two passes, players m
 The local bridge does not send game histories to the Internet. Selecting a different custom provider sends the complete requested histories to that provider; use only a destination you trust. Do not put credentials into endpoint URLs. Production public hosting and provider authentication are outside this prototype's scope.
 
 With compensation pruning, every analysis request uses that leaf's **current effective komi**, including the match-level ledger; a settled leaf's effective komi is frozen. Historical rewinds do not remove compensation. The KataGo bridge accepts effective komi only within [-400, 400], in half-point increments, and reports a clear error outside that range rather than silently changing the rule.
+
+
+## Optional browser provider
+
+See [browser build, model selection and verified limits](BROWSER-AI.md). Its `analyze` and `generateMove` adapter preserves request/node identity and the existing legality checks. It runs a TypeScript search with TensorFlow.js, not a hosted KataGo process. Web Worker cancellation and state revisions prevent stale replies from being played.

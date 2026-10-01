@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
+      - name: Build optional browser analysis runtime
+        run: npm ci --prefix browser-ai --ignore-scripts && npm --prefix browser-ai run build
       - name: Test rules and local adapters
         run: npm test
       - name: Package static frontend only

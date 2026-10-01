@@ -60,7 +60,7 @@ async function withClock(callback) {
 }
 
 test('matchmaking normalizes all rule dimensions and rejects unsupported settings', () => {
-  assert.deepEqual(normalizeMatchOptions({}), { rules: 'infinite-go-v2', size: 9, komi: 7.5, branchLimitExponent: 9, pruningMode: 'none', compensationC: '32' });
+  assert.deepEqual(normalizeMatchOptions({}), { rules: 'infinite-go-v2', size: 9, komi: 7.5, branchLimitExponent: 9, pruningMode: 'none', compensationC: '32',resultMode:'weighted-wins',resignationMargin:20 });
   assert.equal(matchKey({ compensationC: '0032.000' }), matchKey({ compensationC: 32 }));
   const basic = matchKey({});
   for (const changed of [{ size: 13 }, { komi: 6.5 }, { branchLimitExponent: null }, { pruningMode: 'resign' }, { compensationC: '32.01' }]) assert.notEqual(matchKey(changed), basic);
@@ -244,3 +244,10 @@ test('matched room allocation shares friend-room quota and retains receipts acro
   assert.equal((await admit()).status, 200);
   assert.equal(direct.counts.day.count, 1);
 }));
+
+test('match fingerprint separates result modes and configured resignation margins',()=>{
+ const a=normalizeMatchOptions({size:9,resultMode:'weighted-margin',resignationMargin:20});
+ assert.notEqual(JSON.stringify(a),JSON.stringify(normalizeMatchOptions({size:9,resultMode:'weighted-wins',resignationMargin:20})));
+ assert.notEqual(JSON.stringify(a),JSON.stringify(normalizeMatchOptions({size:9,resultMode:'weighted-margin',resignationMargin:20.5})));
+ for(const value of [0,-1,.1,null])assert.throws(()=>normalizeMatchOptions({size:9,resultMode:'weighted-margin',resignationMargin:value}));
+});

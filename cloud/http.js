@@ -12,9 +12,9 @@ export function errorResponse(error) {
     ...(error.status ? error.details : { errorCode: 'CLOUD_UNAVAILABLE', recoverable: true }),
   }, error.status === 429 ? { 'Retry-After': String(Math.ceil(error.details.retryAfterMs / 1000)) } : {});
 }
-export async function readJson(request) {
+export async function readJson(request, maxBytes = LIMITS.requestBytes) {
   if ((request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== 'application/json') reject(415, 'Send application/json');
-  if (Number(request.headers.get('Content-Length')) > LIMITS.requestBytes) reject(413, 'Request body is too large');
+  if (Number(request.headers.get('Content-Length')) > maxBytes) reject(413, 'Request body is too large');
   if (!request.body) reject(400, 'Invalid JSON');
   const reader = request.body.getReader();
   const chunks = [];
@@ -24,7 +24,7 @@ export async function readJson(request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > LIMITS.requestBytes) { await reader.cancel(); reject(413, 'Request body is too large'); }
+      if (size > maxBytes) { await reader.cancel(); reject(413, 'Request body is too large'); }
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }

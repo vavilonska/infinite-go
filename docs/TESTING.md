@@ -49,3 +49,8 @@ The final shared source suite passes 144 tests, including the original rules, Cl
 The pre-existing public friend service was separately exercised from two cloud-browser tabs: create/join, Black D4 and White F6 synchronized both ways. A standalone Node WebSocket smoke timed out in this cloud environment, so it is not used as evidence against that successful browser check.
 
 The Sites backend has separate deployment and live API verification. GitHub Pages carries no default public API; its online link opens the Sites edition. Physical phones, independent real networks and installed Android updates are not implied by these checks.
+
+
+## Local unreleased expansion (2026-10-01)
+
+Adds spectator/restore authority, exact weighted-margin and resignation pricing, required board choice, AI worker cancellation/settings and bounded activity counts. The current suite has 176 passing tests. Local DOM flows and real tiny WASM provider/controller tests pass through a Node Worker shim; all three static/CF/Sites builds pass. Browser-runtime assets build separately and contain no neural weights. See BROWSER-AI.md for the actual model measurements and untested physical-browser/device limits. Nothing in this section claims a production deployment.

@@ -1,3 +1,4 @@
+import {restoredGame,restorePublic,requireRestoreReady} from '../room-restore.js';
 // Cloud transport policy is deliberately separate from the unlimited local rules.
 import { createGame, lineById, replay, play, toggleDead, approveScore, resume, prune } from '../engine.js';
 import { createNigiri, revealNigiri, chooseNigiri, publicNigiri } from '../nigiri.js';
@@ -28,18 +29,19 @@ export function newToken() {
   return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 export function createRoom(code, options, now = Date.now()) {
-  fields(options, ['size', 'komi', 'branchLimitExponent', 'pruningMode', 'compensationC', 'colorSetup', 'hostColor']);
+  fields(options, ['size', 'komi', 'branchLimitExponent', 'pruningMode', 'compensationC', 'colorSetup', 'hostColor', 'resultMode', 'resignationMargin', 'restoreGame']);
   if (options.colorSetup !== undefined && !['manual', 'nigiri'].includes(options.colorSetup)) reject(400, 'Invalid color setup');
   if (options.hostColor !== undefined && !['B', 'W'].includes(options.hostColor)) reject(400, 'Invalid host color');
+  if(options.restoreGame===undefined&&Object.hasOwn(options,'resultMode')&&!Object.hasOwn(options,'size'))reject(400,'Choose a board size');
   if (options.size === null || options.komi === null) reject(400, 'Size and komi cannot be null');
   let game;
   try {
-    game = createGame(options.size ?? 9, options.komi ?? 7.5,
+    game = options.restoreGame!==undefined?restoredGame(options):createGame(options.size ?? 9, options.komi ?? 7.5,
       Object.hasOwn(options, 'branchLimitExponent') ? options.branchLimitExponent : 9,
-      { pruningMode: Object.hasOwn(options, 'pruningMode') ? options.pruningMode : 'none', compensationC: Object.hasOwn(options, 'compensationC') ? options.compensationC : '32' });
+      {resultMode:options.resultMode,resignationMargin:options.resignationMargin, pruningMode: Object.hasOwn(options, 'pruningMode') ? options.pruningMode : 'none', compensationC: Object.hasOwn(options, 'compensationC') ? options.compensationC : '32' });
   } catch (error) { reject(400, error.message); }
   return {
-    code, game, revision: 0, createdAt: now, expiresAt: now + ROOM_TTL_MS,
+    code, game, ...(options.restoreGame!==undefined?{restoration:{confirmations:[]}}:{}), revision: 0, createdAt: now, expiresAt: now + ROOM_TTL_MS,
     tokens: { A: newToken(), B: null },
     roles: options.colorSetup === 'nigiri' ? null : { A: options.hostColor ?? 'B', B: options.hostColor === 'W' ? 'B' : 'W' },
     nigiri: options.colorSetup === 'nigiri' ? createNigiri() : null,
@@ -47,7 +49,7 @@ export function createRoom(code, options, now = Date.now()) {
 }
 export const snapshot = (room, seat) => ({
   code: room.code, seat, role: room.roles?.[seat] ?? null, revision: room.revision,
-  game: room.game, setup: publicNigiri(room.nigiri),
+  game: room.game, restoration:restorePublic(room), setup: publicNigiri(room.nigiri),
   players: { B: Boolean(room.tokens.A), W: Boolean(room.tokens.B) },
   expiresAt: room.expiresAt, limits: LIMITS,
 });
@@ -78,6 +80,7 @@ export function joinRoom(room) {
   return { ...room, tokens: { ...room.tokens, B: newToken() }, revision: room.revision + 1 };
 }
 export function applySetup(room, seat, body) {
+  requireRestoreReady(room);
   fields(body, ['type', 'revision', 'guess', 'color'], ['type', 'revision']);
   checkRevision(room, body.revision, seat);
   if (!room.nigiri || room.game.lines.some(line => line.history.length)) reject(409, 'Color setup is unavailable after play starts');
@@ -100,6 +103,7 @@ function checkRevision(room, revision, seat) {
   if (revision !== room.revision) reject(409, 'State changed; refresh and try again', snapshot(room, seat));
 }
 export function applyAction(room, seat, body) {
+  requireRestoreReady(room);
   const role = room.roles?.[seat];
   if (!role) reject(409, 'Finish guessing and choosing colors before playing');
   if (!isObject(body) || !['play', 'toggleDead', 'approveScore', 'resume', 'prune'].includes(body.type)) reject(400, 'Unknown action');

@@ -7,11 +7,12 @@ import {hostGameURL} from './host-address.js';
 import {STATIC_HOST} from './deployment.js';
 import {MatchmakingClient,matchmakingCapabilities,saveQueueSession,loadQueueSession,clearQueueSession} from './matchmaking-client.js';
 import {DEFAULT_REMOTE_ENDPOINT,ONLINE_PLAY_URL} from './remote-config.js';
-import {RemoteRoomClient,remoteEndpoint,remoteCode,saveRemoteSession,loadRemoteSession,lastRemoteSession,clearActiveRemoteSession} from './remote-room.js';
+import {SpectatorRoomClient,RemoteRoomClient,remoteEndpoint,remoteCode,saveRemoteSession,loadRemoteSession,lastRemoteSession,clearActiveRemoteSession} from './remote-room.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 let ai=null,localNigiri=null,remoteClient=null,remoteState='idle',connectionEpoch=0;
 const ANDROID_OFFLINE=location.hostname==='appassets.androidplatform.net';
 let roomStorage=null;try{roomStorage=sessionStorage;}catch{}
+let restoreDraft=null,gameRevision=0;
 let game=E.createGame(),selected=1,index=0,pending=null,session=null,busy=false,polling=false,connecting=false,networkLost=false;
 let currentMode=null,gameMode='same-screen',page='menu',hasGame=false,queueClient=null,queueStatus='idle',queueSupported=false,capabilityEpoch=0,capabilityController=null;
 const MODES={'same-screen':['同屏双人','共用一台设备，轮流执黑白'],'ai':['AI 对弈','连接自己的 AI 服务，再选择人机或机机'],'lan':['局域网对弈','同一网络，打开房主的游戏页面'],'friends':['远程朋友','创建房间，把房间码发给朋友'],'matchmaking':['远程匹配','匿名寻找相同规则的对手，猜单双决定选色']};
@@ -21,10 +22,11 @@ const tree=createTree($('tree'),(id,depth)=>{selected=id;index=depth;pending=nul
 function message(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
 function chosenLimit(){const v=$('branchLimit').value;return v==='none'?null:v==='custom'?Number($('customLimit').value):Number(v);}
 function chosenC(){return $('compensationC').value==='custom'?$('customC').value.trim():$('compensationC').value;}
-function chosenPruning(){const mode=$('pruningMode').value;return {pruningMode:mode,compensationC:mode==='komi'?chosenC():'32'};}
-function updatePruningControls(){const active=$('pruningMode').value==='komi';$('compensationControls').hidden=!active;$('compensationHint').hidden=!active;$('customC').hidden=$('compensationC').value!=='custom';$('branchLimit').disabled=active;$('customLimit').disabled=active;if(active)try{const info=E.compensationInfo(chosenC()),percent=Number(info.actualMin.n)/Number(info.actualMin.d)*100,raw=Number(info.rawMinimumCompensation.n)/Number(info.rawMinimumCompensation.d),rounded=Number(info.roundedMinimumCompensation.n)/Number(info.roundedMinimumCompensation.d);$('compensationHint').textContent=`实际最低新生叶 ${E.weightText(info.actualMin)}（${Number(percent.toPrecision(7)).toString()}%）· 原始最小补偿 ${raw} 目 · 半目向上取整 ${rounded} 目；本模式不用手动门槛`;}catch(e){$('compensationHint').textContent=e.message;}}
+function selectedSize(){const size=Number($('size').value);if(![9,13,19].includes(size))throw new Error('新对局请先选择棋盘大小');return size;}
+function chosenPruning(){const mode=$('pruningMode').value;return {resultMode:$('resultMode').value,resignationMargin:Number($('resignationMargin').value),pruningMode:mode,compensationC:mode==='komi'?chosenC():'32'};}
+function updatePruningControls(){$('resignationControls').hidden=!($('resultMode').value==='weighted-margin'&&$('pruningMode').value==='resign');const active=$('pruningMode').value==='komi';$('compensationControls').hidden=!active;$('compensationHint').hidden=!active;$('customC').hidden=$('compensationC').value!=='custom';$('branchLimit').disabled=active;$('customLimit').disabled=active;if(active)try{const info=E.compensationInfo(chosenC()),percent=Number(info.actualMin.n)/Number(info.actualMin.d)*100,raw=Number(info.rawMinimumCompensation.n)/Number(info.rawMinimumCompensation.d),rounded=Number(info.roundedMinimumCompensation.n)/Number(info.roundedMinimumCompensation.d);$('compensationHint').textContent=`实际最低新生叶 ${E.weightText(info.actualMin)}（${Number(percent.toPrecision(7)).toString()}%）· 原始最小补偿 ${raw} 目 · 半目向上取整 ${rounded} 目；本模式不用手动门槛`;}catch(e){$('compensationHint').textContent=e.message;}}
 function currentLine(){return E.lineById(game,selected);}
-function canAct(){const l=currentLine();return !connecting&&!(session?.mode==='remote'&&remoteState!=='connected')&&!(session&&!session.role)&&localNigiri?.phase!=='guess'&& !ai?.isAITurn(selected)&&E.canActOn(game,selected,session?.role);}
+function canAct(){const l=currentLine();return !session?.restoration?.pending&&!session?.spectator&&!connecting&&!(session?.mode==='remote'&&remoteState!=='connected')&&!(session&&!session.role)&&localNigiri?.phase!=='guess'&& !ai?.isAITurn(selected)&&E.canActOn(game,selected,session?.role);}
 function stoneSymbol(color){const stone=document.createElement('span');stone.className='stone-symbol '+(color==='B'?'black':'white');stone.setAttribute('aria-hidden','true');return stone;}
 function colorName(c){return c==='B'?'黑':'白';}
 function element(tag,attrs){const e=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
@@ -34,12 +36,12 @@ function board(){const l=currentLine(),annotations=boardAnnotations(l,index,game
  for(let i=0;i<n*n;i++){const x=pad+i%n*gap,y=pad+Math.floor(i/n)*gap,c=s.board[i];if(c){svg.append(element('circle',{cx:x,cy:y,r:14,fill:c==='B'?'#18202b':'#fff8e9',stroke:c==='B'?'#070e19':'#c4b9a4','stroke-width':1.3}));if($('showMoveNumbers').checked){const label=element('text',{x,y:y+.5,'text-anchor':'middle','dominant-baseline':'central',fill:c==='B'?'#fff8e9':'#18202b','font-size':String(annotations.numbers[i]).length>3?8: String(annotations.numbers[i]).length>2?10:12,'font-weight':700,'pointer-events':'none',class:'move-number'});label.textContent=annotations.numbers[i];svg.append(label);}if(annotations.branchAt===i)svg.append(element('circle',{cx:x,cy:y,r:15.3,fill:'none',stroke:'#c57a00','stroke-width':2.5,class:'branch-origin','pointer-events':'none'}));if(index===l.history.length&&l.dead.includes(i))svg.append(element('path',{d:`M${x-7},${y-7}l14,14m0,-14l-14,14`,stroke:'#f25f76','stroke-width':3}));}if(pending===i)svg.append(element('circle',{cx:x,cy:y,r:13,fill:s.toPlay==='B'?'#18202b88':'#fff8e999',stroke:'#2d8994','stroke-width':3,'stroke-dasharray':'3 2'}));const last=l.history[index-1];if(last?.type==='play'&&last.at===i)svg.append(element('circle',{cx:x,cy:y,r:$('showMoveNumbers').checked?11:4,fill:$('showMoveNumbers').checked?'none':c==='B'?'#70ead2':'#744dcc',stroke:c==='B'?'#70ead2':'#744dcc','stroke-width':1.5,'stroke-dasharray':$('showMoveNumbers').checked?'2 2':'none',class:'last-move','pointer-events':'none'}));const hit=element('rect',{x:x-16,y:y-16,width:32,height:32,class:'hit',tabindex:0,role:'gridcell','aria-label':`${'ABCDEFGHJKLMNOPQRST'[i%n]}${n-Math.floor(i/n)} ${c?colorName(c)+'子':'空'}${c&&$('showMoveNumbers').checked?' · 第 '+annotations.numbers[i]+' 手':''}`});const click=()=>{if(l.status==='scoring'&&index===l.history.length){act({type:'toggleDead',id:selected,at:i});return;}if(!canAct()){message(E.turnInfo(game,selected).waiting?E.turnInfo(game,selected).reason:'请选择你本轮尚未操作、且当前轮到你颜色的时间线',true);return;}try{E.apply(s,{type:'play',at:i,color:s.toPlay},n);pending=i;board();$('confirmMove').disabled=false;message(`预览 ${'ABCDEFGHJKLMNOPQRST'[i%n]}${n-Math.floor(i/n)}，点击“确认落子”提交`);}catch(e){message(e.message,true);}};hit.addEventListener('click',click);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();click();}});svg.append(hit);}
 }
 function render(){renderNigiri();if(!game.lines.some(l=>l.id===selected))selected=game.lines[0].id;const l=currentLine();index=Math.min(index,l.history.length);$('round').textContent=`● 黑第 ${game.turns.B.epoch} 轮 · 剩 ${game.turns.B.pending.length} 线　○ 白第 ${game.turns.W.epoch} 轮 · 剩 ${game.turns.W.pending.length} 线`;$('lineTitle').textContent=`时间线 #${selected} · 权重 ${E.weightText(l.weight)}`;const turn=E.turnInfo(game,selected);$('turn').classList.toggle('turn-waiting',turn.waiting);$('turn').textContent=l.status==='playing'?turn.reason:l.status==='scoring'?'双方计分':`${l.result.winner==='draw'?'平局':colorName(l.result.winner)+'胜'}`;if(turn.canPlay)$('turn').replaceChildren(stoneSymbol(turn.toPlay),document.createTextNode(' '+colorName(turn.toPlay)+'方可下'));
- $('history').max=l.history.length;$('history').value=index;$('historyLabel').textContent=`第 ${index} / ${l.history.length} 步${index<l.history.length?(E.canBranch(game,l)?' · 历史预览：不同落子将创建分支，旧线保留':' · 已到分叉门槛，仅可继续当前叶'):' · 最新局面'} · 门槛 ${game.pruningMode==='komi'?E.weightText(E.compensationInfo(game.compensationC).actualMin)+'（新生叶）':game.branchLimitExponent==null?'不限制':'1/'+String(2n**BigInt(game.branchLimitExponent))}`;$('confirmMove').disabled=pending===null||!canAct()||busy;$('pass').disabled=!canAct()||busy;$('prune').disabled=!canAct()||busy||game.pruningMode==='none'||index===0;$('prev').disabled=index===0;$('next').disabled=index===l.history.length;$('scoring').hidden=l.status!=='scoring'||index!==l.history.length;
- if(l.status==='scoring'){const sc=E.score(game,selected);$('scorePreview').textContent=`黑 ${sc.B} · 白 ${sc.W}（含当前贴目 ${E.effectiveKomi(game,l)}） · 已确认：${l.approvals.map(colorName).join('、')||'无'}`;for(const c of ['B','W'])$('approve'+c).disabled=l.approvals.includes(c)||!!(session&&session.role!==c)||busy||(session?.mode==='remote'&&remoteState!=='connected');}
- const t=E.totals(game);$('totals').replaceChildren();for(const[k,label]of Object.entries({B:'黑胜权重',W:'白胜权重',draw:'平局权重',unsettled:'未结算权重'})){const d=document.createElement('div');d.className='stat';const b=document.createElement('strong');b.textContent=E.weightText(t[k]);const span=document.createElement('span');span.textContent=label;d.append(b,span);$('totals').append(d);}$('matchResult').textContent=E.majority(t.B)?'黑方已锁定胜利':E.majority(t.W)?'白方已锁定胜利':t.unsettled.n==='0'?'对局结束 · 整体平局':'无限可能，尚未定局';
+ $('history').max=l.history.length;$('history').value=index;$('historyLabel').textContent=`第 ${index} / ${l.history.length} 步${index<l.history.length?(!session?.spectator&&E.canBranch(game,l)?' · 历史预览：不同落子将创建分支，旧线保留':' · 已到分叉门槛，仅可继续当前叶'):' · 最新局面'} · 门槛 ${game.pruningMode==='komi'?E.weightText(E.compensationInfo(game.compensationC).actualMin)+'（新生叶）':game.branchLimitExponent==null?'不限制':'1/'+String(2n**BigInt(game.branchLimitExponent))}`;$('confirmMove').disabled=pending===null||!canAct()||busy;$('pass').disabled=!canAct()||busy;$('prune').disabled=!canAct()||busy||game.pruningMode==='none'||index===0;$('prev').disabled=index===0;$('next').disabled=index===l.history.length;$('scoring').hidden=l.status!=='scoring'||index!==l.history.length;
+ if(l.status==='scoring'){const sc=E.score(game,selected);$('scorePreview').textContent=`黑 ${sc.B} · 白 ${sc.W}（含当前贴目 ${E.effectiveKomi(game,l)}） · 已确认：${l.approvals.map(colorName).join('、')||'无'}`;for(const c of ['B','W'])$('approve'+c).disabled=l.approvals.includes(c)||!!session?.restoration?.pending||!!(session&&session.role!==c)||busy||(session?.mode==='remote'&&remoteState!=='connected');}
+ const t=E.totals(game);$('totals').replaceChildren();for(const[k,label]of Object.entries({B:'黑胜权重',W:'白胜权重',draw:'平局权重',unsettled:'未结算权重'})){const d=document.createElement('div');d.className='stat';const b=document.createElement('strong');b.textContent=E.weightText(t[k]);const span=document.createElement('span');span.textContent=label;d.append(b,span);$('totals').append(d);}const outcome=E.resultSummary(game);$('matchResult').textContent=outcome.mode==='weighted-margin'?`加权目差（白正黑负）：${E.weightText(outcome.whiteMargin)} 目 · ${outcome.complete?(outcome.winner==='draw'?'整体平局':colorName(outcome.winner)+'胜'):'已结算部分，未定胜负'}`:outcome.winner?(outcome.winner==='draw'?'整体平局':colorName(outcome.winner)+'方已锁定胜利'):'加权胜负 · 尚未定局';
  $('pruningLedger').textContent=`剪枝模式：${{none:'不剪枝',resign:'认输剪枝',komi:'贴目补偿'}[game.pruningMode||'none']} · 本盘白贴目 ${E.effectiveKomi(game,l)} · 累计调整 ${game.komiCompensation?E.weightText(game.komiCompensation):'0/1'} 目`;$('archives').replaceChildren();for(const entry of game.archives||[]){const p=document.createElement('p');p.className='muted';p.textContent=`第 ${entry.round} 轮 · ${colorName(entry.actor)}方 ${entry.mode==='resign'?'认输':'贴目补偿'}剪枝 · ${entry.lines.length} 叶 · 原权重 ${E.weightText(entry.subtreeWeight)} · 白贴目调整 ${E.weightText(entry.komiDelta)}`;$('archives').append(p);}$('archivePanel').hidden=!(game.archives||[]).length;
  $('lines').replaceChildren();const done=game.lines.filter(l=>l.status==='settled').length;const settled=E.add(E.add(t.B,t.W),t.draw);$('lineCount').textContent=`完成 ${done} / ${game.lines.length} · 已结算 ${Number(BigInt(settled.n)*10000n/BigInt(settled.d))/100}%`; for(const line of game.lines){const b=document.createElement('button');const availability=E.turnInfo(game,line.id);b.className='line-item'+(line.id===selected?' selected':'')+(availability.waiting?' turn-waiting':'');const left=document.createElement('span');left.textContent=`${selected===line.id?'▶ ':''}#${line.id} · ${E.weightText(line.weight)}`;const right=document.createElement('small');right.textContent=`${line.history.length} 步 · ${line.status==='settled'?(line.archived?'认输归档':'已结算'):line.status==='scoring'?'待计分':availability.reason}`;if(availability.canPlay){right.textContent=right.textContent.replace(/● |○ /,'');right.prepend(stoneSymbol(availability.toPlay),document.createTextNode(' '));}b.append(left,right);b.onclick=()=>{selected=line.id;index=line.history.length;pending=null;render();};$('lines').append(b);}
- $('connection').textContent=session?`${session.mode==='remote'?'远程':'局域网'} ${session.code} · ${session.role?colorName(session.role)+'方':'待选色'}`:DEFAULT_REMOTE_ENDPOINT?'在线服务':STATIC_HOST?'静态同屏版':'同屏模式';$('new').disabled=!!session||connecting;$('load').disabled=!!session||connecting;renderRoomControls();renderNavigation();board();tree.render(game);ai?.update();
+ $('connection').textContent=session?`${session.mode==='remote'?'远程':'局域网'} ${session.code} · ${session.spectator?'观战':session.role?colorName(session.role)+'方':'待选色'}`:DEFAULT_REMOTE_ENDPOINT?'在线服务':STATIC_HOST?'静态同屏版':'同屏模式';$('new').disabled=!!session||connecting;$('load').disabled=!!session||connecting;renderRoomControls();renderNavigation();board();tree.render(game);ai?.update();
 }
 function localAction(a){switch(a.type){case'play':return E.play(game,a.id,a.index,a.at);case'toggleDead':return E.toggleDead(game,a.id,a.at);case'approveScore':return E.approveScore(game,a.id,a.color);case'resume':return E.resume(game,a.id);case'prune':return E.prune(game,a.id,a.index,E.replay(E.lineById(game,a.id).history,game.size).toPlay);}}
 async function request(path,body,auth=true){
@@ -60,13 +62,14 @@ function accept(data,target=session){
  // Validate data before replacing the usable local export. Remote operators are
  // an explicit trust boundary, but malformed snapshots must not erase a game.
  const nextGame=changed&&target.mode==='remote'?E.importGame(JSON.stringify(data.game)):data.game;
- target.revision=data.revision;target.role=data.role;target.seat=data.seat;target.setup=data.setup;target.players=data.players;target.expiresAt=data.expiresAt;target.limits=data.limits;
- if(changed){game=nextGame;const l=game.lines.find(l=>l.id===selected);index=l?.history.length??0;pending=null;render();}
+ target.restoration=data.restoration;target.revision=data.revision;target.role=data.role;target.seat=data.seat;target.setup=data.setup;target.players=data.players;target.expiresAt=data.expiresAt;target.limits=data.limits;
+ if(changed){gameRevision++;const preview=target.spectator&&index<(game.lines.find(l=>l.id===selected)?.history.length??0);game=nextGame;const l=game.lines.find(l=>l.id===selected);index=preview?Math.min(index,l?.history.length??0):l?.history.length??0;pending=null;render();}
  renderRoomInfo();
 }
 function defaultRemoteService(){return $('remoteServiceMode').value==='default';}
 function renderRoomInfo(){
  if(session){
+  if(session.spectator){$('roomInfo').textContent=`正在观战 ${session.code} · 只读，不占玩家席位；约每 5 秒同步；共享限额约供 2 人持续观看，更多观众会延迟。可选择时间线和历史、导出棋局。`;return;}
   if(session.matchmaking){$('roomInfo').textContent=`匿名匹配房间 ${session.code} · ${session.role?'你执'+colorName(session.role):'请完成猜单双与选色'}。返回玩法会保持连接；退出请点断开连接。`;return;}
   const who=`房间 ${session.code} · 你是${session.role?colorName(session.role)+'方':'席位 '+session.seat+'（待选色）'} · ${session.players?.W?'双方已加入':'等待另一方加入'}`;
   $('roomInfo').textContent=session.mode==='remote'?`${who}。${defaultRemoteService()?'朋友打开本网页，选择默认在线服务':'朋友需选择同一自定义服务'}，并输入此 12 位房间码。${Number.isFinite(session.expiresAt)?'到期时间：'+new Date(session.expiresAt).toLocaleString()+'。':''}`:`${who}。让另一设备打开同一电脑的局域网地址，单个空房可直接加入；多房间才需房间码`;
@@ -80,12 +83,18 @@ function renderRoomControls(){
  $('remoteConfigNote').textContent=defaultRemoteService()?'双方使用本网页的默认在线服务，无需填写服务地址。':'请填写你或朋友部署的兼容 HTTPS 房间服务，只含完整源地址，不含路径或参数。双方必须选择同一自定义服务。';
  $('roomCode').maxLength=remote?12:8;$('roomCode').placeholder=remote?'远程房间码（12 位，必填）':'房间码（单局可留空）';
  $('host').textContent=remote?'同意连接并随机创建房间':'随机创建房间';$('join').textContent=remote?'同意连接并加入 / 恢复':'加入房间';
- $('host').disabled=disabled||(remote?ANDROID_OFFLINE||navigator.onLine===false:STATIC_HOST);$('join').disabled=$('host').disabled;
+ $('host').disabled=disabled||(remote?ANDROID_OFFLINE||navigator.onLine===false:STATIC_HOST);$('join').disabled=$('host').disabled;$('watch').disabled=$('host').disabled;
  $('leave').disabled=!session&&!connecting;$('copyRoom').hidden=!session||gameMode==='matchmaking';$('connectedActions').hidden=!session&&!connecting;
  $('friendSetup').hidden=currentMode==='matchmaking'||!!session;$('matchmakingSetup').hidden=currentMode!=='matchmaking'||!!session;$('remoteOptions').hidden=!remote||!!session;
  $('startMatchmaking').disabled=disabled||!queueSupported||ANDROID_OFFLINE||navigator.onLine===false;$('startMatchmaking').hidden=!!queueClient;$('cancelMatchmaking').hidden=!queueClient;$('cancelMatchmaking').disabled=queueStatus==='cancelling';
- for(const id of ['size','komi','pruningMode','compensationC','customC','branchLimit','customLimit','colorSetup','hostColor'])$(id).disabled=disabled||(id==='branchLimit'||id==='customLimit')&&$('pruningMode').value==='komi';
- $('resume').disabled=busy||session?.mode==='remote'&&remoteState!=='connected';
+ for(const id of ['size','resultMode','resignationMargin','roomSource','roomRestoreFile','komi','pruningMode','compensationC','customC','branchLimit','customLimit','colorSetup','hostColor'])$(id).disabled=disabled||(id==='branchLimit'||id==='customLimit')&&$('pruningMode').value==='komi';
+ $('resume').disabled=!!session?.restoration?.pending||!!session?.spectator||busy||session?.mode==='remote'&&remoteState!=='connected';
+ const restoring=['friends','lan'].includes(currentMode)&&$('roomSource').value==='json'&&!session;
+ $('roomRestoreFilePanel').hidden=!restoring;
+ if(restoring){if(restoreDraft)syncSetupFromGame(restoreDraft);for(const id of ['size','resultMode','resignationMargin','komi','pruningMode','compensationC','customC','branchLimit','customLimit','colorSetup'])$(id).disabled=true;}
+ $('restoreConfirmPanel').hidden=!session?.restoration?.pending;
+ $('restoreConfirmInfo').textContent=session?.restoration?`从存档创建的新房间 · ${game.size} 路 · ${game.resultMode==='weighted-margin'?'加权目差':'加权胜负'} · 已确认 ${session.restoration.confirmations.length}/2。请检查棋盘和完整时间线，确认后才可继续。`:'';
+ $('confirmRestore').disabled=!session||session.spectator||!session.players?.W||session.restoration?.confirmations.includes(session.seat)||busy;
  renderRoomInfo();
 }
 function remoteStatusUpdate(client,status){
@@ -95,14 +104,14 @@ function remoteStatusUpdate(client,status){
  if(status.state==='ended')message(status.reason,true);
  if(session?.mode==='remote')render();
 }
-async function act(a){if(busy||connecting)return;const epoch=connectionEpoch,target=session;if(a.type==='play'&&((session&&!session.role)||localNigiri?.phase==='guess')){message('请先完成猜先与选色',true);return false;}busy=true;try{if(session){const data=await request(`/api/rooms/${session.code}/actions`,{...a,revision:session.revision});if(epoch!==connectionEpoch||session!==target)return false;accept(data,target);}else{const id=localAction(a);if(a.type==='play')selected=id;if(a.type==='prune'||!game.lines.some(l=>l.id===selected))selected=game.queue[0]||game.lines[0].id;index=currentLine().history.length;}pending=null;message(a.type==='play'?'已落子。可自由选择本轮尚未操作且轮到自己颜色的时间线':'已更新棋局');return true;}catch(e){if(epoch===connectionEpoch)message(e.status===507?'远程房间已达资源上限，棋局已保留。请导出 JSON，回到同屏继续。':e.message,true);return false;}finally{if(epoch===connectionEpoch){busy=false;render();}}}
+async function act(a){ai?.noteInteraction?.();if(session?.restoration?.pending){message('请双方先确认恢复棋局',true);return false;}if(session?.spectator){message('观战为只读，不能修改棋局',true);return false;}if(busy||connecting)return;const epoch=connectionEpoch,target=session;if(a.type==='play'&&((session&&!session.role)||localNigiri?.phase==='guess')){message('请先完成猜先与选色',true);return false;}busy=true;try{if(session){const data=await request(`/api/rooms/${session.code}/actions`,{...a,revision:session.revision});if(epoch!==connectionEpoch||session!==target)return false;accept(data,target);}else{const id=localAction(a);gameRevision++;if(a.type==='play')selected=id;if(a.type==='prune'||!game.lines.some(l=>l.id===selected))selected=game.queue[0]||game.lines[0].id;index=currentLine().history.length;}pending=null;message(a.type==='play'?'已落子。可自由选择本轮尚未操作且轮到自己颜色的时间线':'已更新棋局');return true;}catch(e){if(epoch===connectionEpoch)message(e.status===507?'远程房间已达资源上限，棋局已保留。请导出 JSON，回到同屏继续。':e.message,true);return false;}finally{if(epoch===connectionEpoch){busy=false;render();}}}
 $('confirmMove').onclick=()=>{if(pending!==null)act({type:'play',id:selected,index,at:pending});};$('cancelMove').onclick=()=>{pending=null;render();message('已取消落子预览');};$('pass').onclick=()=>act({type:'play',id:selected,index,at:null});$('history').oninput=e=>{index=Number(e.target.value);pending=null;render();};$('prev').onclick=()=>{index--;pending=null;render();};$('next').onclick=()=>{index++;pending=null;render();};$('live').onclick=()=>{index=currentLine().history.length;pending=null;render();};$('current').onclick=()=>{const choices=E.eligibleIds(game,session?.role).filter(id=>!ai?.isAITurn(id));if(choices.length){selected=choices[0];index=currentLine().history.length;pending=null;render();}else message('暂无你可操作的时间线，请查看黑白棋子标识或等待对方行动');};
 for(const c of ['B','W'])$('approve'+c).onclick=()=>act({type:'approveScore',id:selected,color:c});$('resume').onclick=()=>act({type:'resume',id:selected});
 $('pruningMode').onchange=updatePruningControls;$('compensationC').onchange=updatePruningControls;$('customC').oninput=updatePruningControls;
-$('prune').onclick=()=>{try{const actor=E.replay(currentLine().history,game.size).toPlay,info=E.pruningInfo(game,selected,index,actor);const consequence=info.mode==='resign'?`这些权重将实际判给${colorName(E.other(actor))}方`:`剩余未结算盘的白贴目调整 ${E.weightText(info.komiDelta)} 目，剩余权重按比例归一化`;if(confirm(`剪除这个完整历史子树的 ${info.affectedIds.length} 条叶，原总权重 ${E.weightText(info.subtreeWeight)}？${consequence}。归档路线不可复活。`))act({type:'prune',id:selected,index});}catch(e){message(e.message,true);}};
+$('prune').onclick=()=>{try{const actor=E.replay(currentLine().history,game.size).toPlay,info=E.pruningInfo(game,selected,index,actor);const consequence=info.mode==='resign'?(game.resultMode==='weighted-margin'?`每条被剪叶按自身权重计入认输约定 ${game.resignationMargin} 目，判给${colorName(E.other(actor))}方`:`这些权重将实际判给${colorName(E.other(actor))}方`):`剩余未结算盘的白贴目调整 ${E.weightText(info.komiDelta)} 目，剩余权重按比例归一化`;if(confirm(`剪除这个完整历史子树的 ${info.affectedIds.length} 条叶，原总权重 ${E.weightText(info.subtreeWeight)}？${consequence}。归档路线不可复活。`))act({type:'prune',id:selected,index});}catch(e){message(e.message,true);}};
 $('branchLimit').onchange=()=>{$('customLimit').hidden=$('branchLimit').value!=='custom';};
-$('new').onclick=()=>{if(session||queueClient||connecting)return;if(game.lines.some(l=>l.history.length)&&!confirm('新对局会替换当前同屏对局，请先导出保存。继续？'))return;try{game=E.createGame(Number($('size').value),Number($('komi').value),chosenLimit(),chosenPruning());selected=1;index=0;pending=null;localNigiri=null;ai?.reset();hasGame=true;gameMode=currentMode||'same-screen';page='play';if(currentMode==='ai')$('aiPlayDetails').open=true;syncSetupFromGame();updateRoute(false);render();focusPage();message('新对局已准备好');}catch(e){message(e.message,true);}};
-$('save').onclick=()=>{const blob=new Blob([E.exportGame(game)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='infinite-go.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};$('load').onchange=async e=>{const f=e.target.files[0];if(!f||session)return;try{if(f.size>10_000_000)throw new Error('导入文件过大（上限 10 MB）');const loaded=E.importGame(await f.text());if(game.lines.some(l=>l.history.length)&&!confirm('导入会替换当前同屏对局。继续？'))return;game=loaded;localNigiri=null;selected=game.lines[0].id;index=currentLine().history.length;pending=null;ai?.reset();hasGame=true;gameMode=currentMode==='ai'?'ai':'same-screen';currentMode=gameMode;page='play';syncSetupFromGame();updateRoute(false);render();message('已导入并验证保存文件');}catch(e){message(e.message,true);}finally{e.target.value='';}};
+$('new').onclick=()=>{if(session||queueClient||connecting)return;if(game.lines.some(l=>l.history.length)&&!confirm('新对局会替换当前同屏对局，请先导出保存。继续？'))return;try{gameRevision++;game=E.createGame(selectedSize(),Number($('komi').value),chosenLimit(),chosenPruning());selected=1;index=0;pending=null;localNigiri=null;ai?.reset();hasGame=true;gameMode=currentMode||'same-screen';page='play';if(currentMode==='ai')$('aiPlayDetails').open=true;syncSetupFromGame();updateRoute(false);render();focusPage();message('新对局已准备好');}catch(e){message(e.message,true);}};
+$('save').onclick=()=>{const blob=new Blob([E.exportGame(game)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='infinite-go.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};$('load').onchange=async e=>{const f=e.target.files[0];if(!f||session)return;try{if(f.size>10_000_000)throw new Error('导入文件过大（上限 10 MB）');const loaded=E.importGame(await f.text());if(game.lines.some(l=>l.history.length)&&!confirm('导入会替换当前同屏对局。继续？'))return;game=loaded;gameRevision++;localNigiri=null;selected=game.lines[0].id;index=currentLine().history.length;pending=null;ai?.reset();hasGame=true;gameMode=currentMode==='ai'?'ai':'same-screen';currentMode=gameMode;page='play';syncSetupFromGame();updateRoute(false);render();message('已导入并验证保存文件');}catch(e){message(e.message,true);}finally{e.target.value='';}};
 $('help').onclick=()=>{$('modeHelp').hidden=false;$('rules').open=true;$('rules').scrollIntoView({behavior:'smooth'});};$('zoomIn').onclick=()=>tree.zoom(1.2);$('zoomOut').onclick=()=>tree.zoom(1/1.2);$('resetTree').onclick=()=>tree.reset();
 async function connect(join){
  if(connecting||session||queueClient)return;
@@ -112,7 +121,7 @@ async function connect(join){
  let candidate=null;
  try{
   let code=$('roomCode').value.trim().toUpperCase(),data;
-  const options={size:Number($('size').value),komi:Number($('komi').value),branchLimitExponent:chosenLimit(),...chosenPruning(),colorSetup:$('colorSetup').value,hostColor:$('hostColor').value};
+  const options=join?{}:$('roomSource').value==='json'?{restoreGame:restoreDraft,hostColor:$('hostColor').value}:{size:selectedSize(),komi:Number($('komi').value),branchLimitExponent:chosenLimit(),...chosenPruning(),colorSetup:$('colorSetup').value,hostColor:$('hostColor').value};if(!join&&$('roomSource').value==='json'&&!restoreDraft)throw new Error('请先选择有效 JSON 存档');
   if(remote){
    if(ANDROID_OFFLINE)throw new Error('请在系统浏览器打开在线游戏页面使用远程房间');
    if(navigator.onLine===false)throw new Error('当前离线；同屏模式仍可使用，联网后再连接远程房间');
@@ -141,13 +150,36 @@ async function connect(join){
  }finally{if(epoch===connectionEpoch){connecting=false;render();}}
 }
 $('host').onclick=()=>connect(false);$('join').onclick=()=>connect(true);
-$('leave').onclick=()=>{connectionEpoch++;remoteClient?.close();remoteClient=null;remoteState='idle';session=null;connecting=false;busy=false;networkLost=false;localNigiri=null;ai?.reset();try{roomStorage?.removeItem('infinite-go-room');}catch{}clearActiveRemoteSession(roomStorage);gameMode='same-screen';currentMode='same-screen';page='play';hasGame=true;syncSetupFromGame();updateRoute(false);$('remoteStatus').textContent='已断开远程连接';render();message('已回到同屏模式，保留当前棋局副本；可导出或继续落子');};
+$('resultMode').onchange=()=>{updatePruningControls();if(currentMode==='matchmaking')checkMatchmaking();};
+$('roomSource').onchange=()=>{if($('roomSource').value==='new'){$('size').value='';$('resultMode').value='weighted-margin';$('pruningMode').value='komi';updatePruningControls();}renderRoomControls();};
+$('roomRestoreFile').onchange=async event=>{restoreDraft=null;try{const file=event.target.files[0];if(!file)return;if(file.size>96000)throw new Error('联机存档上限 96 KB');restoreDraft=E.importGame(await file.text());$('size').value=restoreDraft.size;$('resultMode').value=restoreDraft.resultMode;$('komi').value=restoreDraft.komi;$('pruningMode').value=restoreDraft.pruningMode;$('resignationMargin').value=restoreDraft.resignationMargin;updatePruningControls();$('roomRestoreSummary').textContent=`存档：${restoreDraft.size} 路 · ${restoreDraft.resultMode==='weighted-margin'?'加权目差':'加权胜负'} · ${restoreDraft.lines.length} 条线 · 原贴目 ${restoreDraft.komi}；创建后双方确认，房主请选原执色。`;}catch(error){$('roomRestoreSummary').textContent=error.message;message(error.message,true);}finally{renderRoomControls();}};
+$('confirmRestore').onclick=async()=>{if(!session||session.spectator||busy)return;busy=true;const target=session;try{const data=await request(`/api/rooms/${target.code}/restore-confirm`,{revision:target.revision});accept(data,target);message('恢复棋局确认已提交');}catch(error){message(error.message,true);}finally{busy=false;render();}};
+$('watch').onclick=async()=>{
+ if(session||connecting||queueClient)return;
+ const remote=$('networkMode').value==='remote';
+ if(!remote&&STATIC_HOST){message('请从房主提供的页面观战局域网棋局',true);return;}
+ const epoch=++connectionEpoch;let candidate;
+ connecting=true;render();
+ try{
+  const endpoint=remote?remoteEndpoint($('remoteEndpoint').value):location.origin;
+  const code=$('roomCode').value.trim().toUpperCase();
+  if(remote)remoteCode(code);else if(!/^[A-HJ-NP-Z2-9]{6}$/.test(code))throw new Error('观战需填写 6 位局域网房间码');
+  candidate=new SpectatorRoomClient({endpoint,onSnapshot:data=>{if(remoteClient===candidate&&session?.spectator)accept(data);},onStatus:status=>remoteStatusUpdate(candidate,status)});
+  const data=await candidate.watch(code);E.importGame(JSON.stringify(data.game));
+  if(epoch!==connectionEpoch){candidate.close();return;}
+  remoteClient=candidate;remoteState='connected';localNigiri=null;
+  session={spectator:true,mode:remote?'remote':'lan',endpoint,code,role:null,seat:null,revision:-1};
+  ai?.reset();selected=1;hasGame=true;gameMode=currentMode=remote?'friends':'lan';page='play';accept(data);syncSetupFromGame();updateRoute(false);
+  $('remoteStorage').textContent='观战不占席位、不保存玩家凭据。刷新后可再次输入房间码观战。';candidate.start();message('已进入只读观战');
+ }catch(error){candidate?.close();if(epoch===connectionEpoch)message(error.message,true);}finally{if(epoch===connectionEpoch){connecting=false;render();}}
+};
+$('leave').onclick=()=>{const wasSpectator=session?.spectator;connectionEpoch++;remoteClient?.close();remoteClient=null;remoteState='idle';session=null;connecting=false;busy=false;networkLost=false;localNigiri=null;ai?.reset();if(!wasSpectator){try{roomStorage?.removeItem('infinite-go-room');}catch{}clearActiveRemoteSession(roomStorage);}gameMode='same-screen';currentMode='same-screen';page='play';hasGame=true;syncSetupFromGame();updateRoute(false);$('remoteStatus').textContent='已断开远程连接';render();message('已回到同屏模式，保留当前棋局副本；可导出或继续落子');};
 $('networkMode').onchange=()=>{if(!session&&!connecting){$('remoteStatus').textContent='';renderRoomControls();}};
 let customRemoteEndpoint='';
 $('remoteServiceMode').onchange=()=>{if(session||connecting||queueClient)return;$('remoteEndpoint').value=defaultRemoteService()?DEFAULT_REMOTE_ENDPOINT:customRemoteEndpoint;$('remoteStatus').textContent='尚未连接。确认所选服务后，再点同意连接';renderRoomControls();if(currentMode==='matchmaking')checkMatchmaking();};
 $('remoteEndpoint').oninput=()=>{if(!session&&!connecting&&!queueClient){queueSupported=false;customRemoteEndpoint=$('remoteEndpoint').value;$('remoteStatus').textContent='尚未连接。请确认这是你信任的服务地址，再点同意连接';renderRoomControls();if(currentMode==='matchmaking'){$('matchmakingStatus').textContent='填好服务地址后，点击检查服务';$('retryMatchmaking').hidden=false;capabilityEpoch++;capabilityController?.abort();}}};
 $('copyRoom').onclick=async()=>{if(!session)return;try{await navigator.clipboard.writeText(session.code);message(session.mode==='remote'?(defaultRemoteService()?'已复制房间码。朋友打开本网页，选择默认在线服务并输入房间码即可':'已复制房间码。朋友还需选择相同的自定义服务'):'已复制房间码。朋友需打开相同的局域网页面');}catch{message('房间码：'+session.code+'，可手动复制');}};
-setInterval(async()=>{if(!session||session.mode==='remote'||busy||polling)return;const target=session,epoch=connectionEpoch;polling=true;try{const data=await request(`/api/rooms/${target.code}`);if(session!==target||epoch!==connectionEpoch)return;accept(data,target);if(networkLost){networkLost=false;message('局域网连接已恢复');}}catch(e){if(session===target&&epoch===connectionEpoch){networkLost=true;message(`连接中断：${e.message}。正在等待主机恢复，可导出当前副本`,true);}}finally{polling=false;}},1500);
+setInterval(async()=>{if(!session||session.spectator||session.mode==='remote'||busy||polling)return;const target=session,epoch=connectionEpoch;polling=true;try{const data=await request(`/api/rooms/${target.code}`);if(session!==target||epoch!==connectionEpoch)return;accept(data,target);if(networkLost){networkLost=false;message('局域网连接已恢复');}}catch(e){if(session===target&&epoch===connectionEpoch){networkLost=true;message(`连接中断：${e.message}。正在等待主机恢复，可导出当前副本`,true);}}finally{polling=false;}},1500);
 window.addEventListener('offline',()=>{remoteClient?.setOnline(false);queueClient?.setOnline(false);renderRoomControls();});
 window.addEventListener('online',()=>{remoteClient?.setOnline(true);queueClient?.setOnline(true);renderRoomControls();});
 // Mobile browsers can silently suspend a socket. A visible page gets a fresh
@@ -158,14 +190,14 @@ $('networkMode').value=STATIC_HOST||DEFAULT_REMOTE_ENDPOINT?'remote':'lan';
 $('remoteServiceMode').options[0].disabled=!DEFAULT_REMOTE_ENDPOINT;
 $('remoteServiceMode').value=DEFAULT_REMOTE_ENDPOINT?'default':'custom';
 $('remoteEndpoint').value=DEFAULT_REMOTE_ENDPOINT;
-ai=setupAI({staticHost:STATIC_HOST,getGame:()=>game,getSelected:()=>selected,isLAN:()=>!!session,isSetupPending:()=>localNigiri?.phase==='guess',perform:act,onChange:render,message});
+ai=setupAI({staticHost:STATIC_HOST,getGame:()=>game,getSelected:()=>selected,getVersion:()=>gameRevision,allowAutoplay:()=>gameMode==='ai',isLAN:()=>!!session,isSetupPending:()=>page!=='play'||!hasGame||localNigiri?.phase==='guess'||!!session?.restoration?.pending,perform:act,onChange:render,message});
 const sharedCode=new URLSearchParams(location.search).get('room')||'';
 $('roomCode').value=sharedCode.slice(0,12);
 let remoteSaved=lastRemoteSession(roomStorage);
 if(sharedCode&&sharedCode.toUpperCase()!==remoteSaved?.code)remoteSaved=null;
 if(sharedCode.length===12)$('networkMode').value='remote';
 if(remoteSaved&&(!sharedCode||sharedCode.toUpperCase()===remoteSaved.code)){$('networkMode').value='remote';$('remoteEndpoint').value=remoteSaved.endpoint;$('remoteServiceMode').value=DEFAULT_REMOTE_ENDPOINT&&remoteSaved.endpoint===remoteEndpoint(DEFAULT_REMOTE_ENDPOINT)?'default':'custom';if(!defaultRemoteService())customRemoteEndpoint=remoteSaved.endpoint;$('roomCode').value=remoteSaved.code;$('remoteStatus').textContent='发现本标签页保存的房间。确认所选服务后，点击“同意连接并加入 / 恢复”';$('roomPanel').open=true;}
-syncSetupFromGame();render();try{const saved=JSON.parse(roomStorage?.getItem('infinite-go-room'));if(!STATIC_HOST&&saved?.code&&saved?.token&&saved.mode!=='remote'&&!remoteSaved){session={...saved,mode:'lan',revision:-1};hasGame=true;gameMode='lan';currentMode='lan';page='play';$('networkMode').value='lan';const target=session,epoch=connectionEpoch;request(`/api/rooms/${session.code}`).then(data=>{if(session===target&&epoch===connectionEpoch){accept(data,target);syncSetupFromGame();}}).catch(e=>{if(session!==target||epoch!==connectionEpoch)return;session=null;render();message('房间未恢复：'+e.message,true);});}}catch{}
+syncSetupFromGame();$('size').value='';$('resultMode').value='weighted-margin';$('pruningMode').value='komi';updatePruningControls();render();try{const saved=JSON.parse(roomStorage?.getItem('infinite-go-room'));if(!STATIC_HOST&&saved?.code&&saved?.token&&saved.mode!=='remote'&&!remoteSaved){session={...saved,mode:'lan',revision:-1};hasGame=true;gameMode='lan';currentMode='lan';page='play';$('networkMode').value='lan';const target=session,epoch=connectionEpoch;request(`/api/rooms/${session.code}`).then(data=>{if(session===target&&epoch===connectionEpoch){accept(data,target);syncSetupFromGame();}}).catch(e=>{if(session!==target||epoch!==connectionEpoch)return;session=null;render();message('房间未恢复：'+e.message,true);});}}catch{}
 
 $('showMoveNumbers').addEventListener('change',board);
 
@@ -173,7 +205,7 @@ function renderNigiri(){
  const state=session?.setup??localNigiri,started=game.lines.some(l=>l.history.length),canGuess=state?.phase==='guess'&&(!session||session.seat==='B'),canChoose=state?.phase==='choose'&&(!session||session.seat===state.winner);
  $('startNigiri').hidden=!!session;$('startNigiri').disabled=connecting||started||!!localNigiri||ai?.mode()==='ai-ai';
  $('guessOdd').hidden=!canGuess;$('guessEven').hidden=!canGuess;$('chooseBlack').hidden=!canChoose||started;$('chooseWhite').hidden=!canChoose||started;
- for(const id of ['guessOdd','guessEven','chooseBlack','chooseWhite'])$(id).disabled=busy||connecting||session?.mode==='remote'&&remoteState!=='connected';
+ for(const id of ['guessOdd','guessEven','chooseBlack','chooseWhite'])$(id).disabled=!!session?.restoration?.pending||!!session?.spectator||busy||connecting||session?.mode==='remote'&&remoteState!=='connected';
  $('nigiriStones').replaceChildren();
  if(!state){$('nigiriStatus').textContent=session?'手动选色：已分配黑白。':'可选猜先：先隐藏生成 1–20 颗棋子，猜中者优先选色；同屏仅作双方约定。机机可跳过。';return;}
  if(state.phase==='guess'){$('nigiriStatus').textContent=session?'棋子数量已在房间服务器生成并隐藏，加入者（席位 B）猜单双。揭晓后赢家选黑白。':'棋子数量已生成并隐藏，请猜单或双。';return;}
@@ -181,7 +213,7 @@ function renderNigiri(){
  for(let i=0;i<state.count;i++)$('nigiriStones').append(stoneSymbol('B'));
 }
 $('startNigiri').onclick=()=>{if(session||game.lines.some(l=>l.history.length)||localNigiri)return;localNigiri=createNigiri();ai?.reset();render();};
-async function nigiriAction(type,value){if(busy||connecting)return;const target=session,epoch=connectionEpoch;try{
+async function nigiriAction(type,value){if(session?.spectator||session?.restoration?.pending)return;if(busy||connecting)return;const target=session,epoch=connectionEpoch;try{
  if(session){busy=true;render();const data=await request(`/api/rooms/${session.code}/setup`,{type,revision:session.revision,...(type==='guess'?{guess:value}:{color:value})});if(target===session&&epoch===connectionEpoch)accept(data,target);}
  else {if(game.lines.some(l=>l.history.length))throw new Error('开局后不能改变猜先结果');if(!localNigiri)throw new Error('请先开始猜先');localNigiri=type==='guess'?revealNigiri(localNigiri,value):chooseNigiri(localNigiri,localNigiri.winner,value);
  if(ai?.mode()==='human-ai'){
@@ -197,10 +229,10 @@ if(STATIC_HOST&&'serviceWorker' in navigator)navigator.serviceWorker.register('.
 
 if(!STATIC_HOST&&location.hash.includes('localAI='))import('./local-ai/panel.js').then(({setupLocalAI})=>setupLocalAI({onConnect:url=>ai.connectURL(url),onDisconnect:()=>ai.disconnect()})).catch(()=>message('本机 AI 设置面板未能加载，请重新打开桌面启动器',true));
 
-function syncSetupFromGame(){
- $('size').value=game.size;$('komi').value=game.komi;$('pruningMode').value=game.pruningMode||'none';
- const c=game.compensationC||'32';$('compensationC').value=['8','32','256'].includes(c)?c:'custom';$('customC').value=c;
- const exp=game.branchLimitExponent;$('branchLimit').value=exp==null?'none':exp<=9?String(exp):'custom';$('customLimit').hidden=exp==null||exp<=9;if(exp>9)$('customLimit').value=exp;updatePruningControls();
+function syncSetupFromGame(source=game){
+ $('size').value=source.size;$('resultMode').value=source.resultMode??'weighted-wins';$('resignationMargin').value=source.resignationMargin??20;$('komi').value=source.komi;$('pruningMode').value=source.pruningMode||'none';
+ const c=source.compensationC||'32';$('compensationC').value=['8','32','256'].includes(c)?c:'custom';$('customC').value=c;
+ const exp=source.branchLimitExponent;$('branchLimit').value=exp==null?'none':exp<=9?String(exp):'custom';$('customLimit').hidden=exp==null||exp<=9;if(exp>9)$('customLimit').value=exp;updatePruningControls();
 }
 function updateRoute(push=false){
  const state={infiniteGo:true,mode:currentMode,page};
@@ -222,9 +254,9 @@ function renderNavigation(){
  $('onlineEditionStatus').textContent=ONLINE_PLAY_URL?'两个网页均提供朋友房间与匿名匹配，房间和匹配池互不相通；和朋友选择同一个。新标签页打开，当前棋局仍保留。':'在线联机版地址尚未配置。也可展开下方设置，连接你信任的兼容 HTTPS 服务。';
  if(!DEFAULT_REMOTE_ENDPOINT&&['friends','matchmaking'].includes(currentMode)&&!session)$('roomHeading').textContent='高级选项 · 自定义 HTTPS 服务';
  $('roomInfo').hidden=currentMode==='matchmaking'&&!session;
- const aiPanel=document.querySelector('.ai-panel');if(aiPanel){const slot=playing?$('aiPlaySlot'):$('aiSetupSlot');if(aiPanel.parentNode!==slot)slot.append(aiPanel);aiPanel.hidden=currentMode!=='ai';}
- $('aiPlayDetails').hidden=currentMode!=='ai';
- $('activeRulesSummary').textContent=`${game.size} 路 · 贴目 ${game.komi} · ${ {none:'不剪枝',resign:'认输剪枝',komi:'贴目补偿剪枝'}[game.pruningMode||'none']} · 分叉 ${game.branchLimitExponent==null?'不限制':'门槛 1/'+String(2n**BigInt(game.branchLimitExponent))}`;
+ const aiPanel=document.querySelector('.ai-panel');if(aiPanel){const slot=playing?$('aiPlaySlot'):$('aiSetupSlot');if(aiPanel.parentNode!==slot)slot.append(aiPanel);aiPanel.hidden=currentMode!=='ai'&&!(playing&&ai?.connected());}
+ $('aiPlayDetails').hidden=currentMode!=='ai'&&!(playing&&ai?.connected());
+ $('activeRulesSummary').textContent=`${game.size} 路 · ${game.resultMode==='weighted-margin'?'加权目差'+(game.pruningMode==='resign'?'（认输约定 '+game.resignationMargin+' 目）':''):'加权胜负'} · 贴目 ${game.komi} · ${ {none:'不剪枝',resign:'认输剪枝',komi:'贴目补偿剪枝'}[game.pruningMode||'none']} · 分叉 ${game.pruningMode==='komi'?'最低新生叶 '+E.weightText(E.compensationInfo(game.compensationC).actualMin):game.branchLimitExponent==null?'不限制':'门槛 1/'+String(2n**BigInt(game.branchLimitExponent))}`;
  const setup=session?.setup??localNigiri;const setupRequired=setup&&setup.phase!=='ready';
  if(setupRequired)$('nigiriPanel').hidden=false;
  else if(game.lines.some(l=>l.history.length)||session)$('nigiriPanel').hidden=true;
@@ -234,7 +266,7 @@ async function selectMode(mode,{push=true}={}){
  if(!MODES[mode])return;
  if(session&&mode!==gameMode){currentMode=gameMode;page='play';updateRoute(false);render();focusPage();message('当前房间仍保持连接。请先在棋局工具中断开，再切换玩法。');$('gameTools').open=true;return;}
  if(queueClient&&mode!==currentMode){if(!await cancelQueue())return;}
- capabilityEpoch++;capabilityController?.abort();currentMode=mode;page=session?'play':'setup';$('modeHelp').hidden=true;$('nigiriPanel').hidden=true;
+ capabilityEpoch++;capabilityController?.abort();currentMode=mode;page=session?'play':'setup';if(!session){$('size').value='';$('resultMode').value='weighted-margin';$('pruningMode').value='komi';updatePruningControls();}$('modeHelp').hidden=true;$('nigiriPanel').hidden=true;
  $('networkMode').value=mode==='lan'?'lan':'remote';$('roomPanel').open=!!session||!['friends','matchmaking'].includes(mode)||!!DEFAULT_REMOTE_ENDPOINT;
  if(mode!=='ai'&&ai?.mode()!=='human'){$('aiMode').value='human';$('aiMode').onchange();}
  updateRoute(push);render();focusPage();
@@ -249,7 +281,7 @@ for(const button of document.querySelectorAll('[data-mode]'))button.onclick=()=>
 $('backToModes').onclick=()=>goToMenu();
 $('resumeGame').onclick=()=>{currentMode=gameMode;page='play';updateRoute(true);render();focusPage();};
 $('continueLocal').onclick=()=>{currentMode=gameMode;page='play';updateRoute(false);render();focusPage();};
-$('editSetup').onclick=()=>{if(session)return;ai?.reset();page='setup';syncSetupFromGame();updateRoute(false);render();focusPage();};
+$('editSetup').onclick=()=>{if(session)return;ai?.reset();page='setup';syncSetupFromGame();$('size').value='';$('resultMode').value='weighted-margin';$('pruningMode').value='komi';updatePruningControls();updateRoute(false);render();focusPage();};
 $('openGameTools').onclick=()=>{$('gameTools').open=!$('gameTools').open;if($('gameTools').open)$('gameTools').scrollIntoView({behavior:'smooth',block:'start'});};
 $('setupHelp').onclick=()=>{$('modeHelp').hidden=!$('modeHelp').hidden;if(!$('modeHelp').hidden){$('rules').open=true;$('modeHelp').scrollIntoView({behavior:'smooth',block:'start'});}};
 $('showNigiri').onclick=()=>{$('nigiriPanel').hidden=false;$('nigiriPanel').scrollIntoView({behavior:'smooth',block:'start'});};
@@ -276,7 +308,7 @@ async function checkMatchmaking(){
  }catch(error){if(epoch===capabilityEpoch){$('matchmakingStatus').textContent=error.name==='AbortError'?'检查超时，请重试或选择可用服务。':error.message;$('retryMatchmaking').hidden=false;}}
  finally{clearTimeout(timer);if(epoch===capabilityEpoch)renderRoomControls();}
 }
-function queueOptions(){return {size:Number($('size').value),komi:Number($('komi').value),branchLimitExponent:chosenLimit(),...chosenPruning(),rules:'infinite-go-v2'};}
+function queueOptions(){return {size:selectedSize(),komi:Number($('komi').value),branchLimitExponent:chosenLimit(),...chosenPruning(),rules:'infinite-go-v2'};}
 function queueUpdate(client,status){
  if(queueClient!==client)return;queueStatus=status.status;
  const remaining=Number.isFinite(status.expiresAt)?Math.max(0,Math.ceil((status.expiresAt-Date.now())/1000)):null;
@@ -323,3 +355,13 @@ $('startMatchmaking').onclick=startQueue;$('cancelMatchmaking').onclick=cancelQu
 if(sharedCode||remoteSaved){currentMode=$('networkMode').value==='lan'?'lan':'friends';page='setup';}
 if(!STATIC_HOST&&location.hash.includes('localAI=')){currentMode='ai';page='setup';}
 updateRoute(false);renderNavigation();
+
+// Counts only, never enumerate rooms. Static Pages stays quiet until a service is chosen.
+async function refreshActiveRooms(){
+ if(page!=='menu'||document.visibilityState==='hidden')return;
+ const endpoint=DEFAULT_REMOTE_ENDPOINT||(!STATIC_HOST?location.origin:'');
+ if(!endpoint){$('activeRooms').textContent='近 5 分钟活跃对局：请进入网页 1 / 网页 2 查看（各站独立）';return;}
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+ try{const r=await fetch(endpoint+'/api/stats',{signal:controller.signal,credentials:'omit',cache:'no-store'}),data=await r.json();if(!r.ok||!Number.isSafeInteger(data.activeRooms)||data.activeRooms<0||data.windowSeconds!==300)throw new Error('Unavailable');$('activeRooms').textContent=`本站近 5 分钟活跃对局：${data.activeRooms}${data.approximate?'（统计可能延迟）':''} · 仅计实际棋局变更`;}catch{$('activeRooms').textContent='本站近 5 分钟活跃对局：未知（统计暂不可用）';}finally{clearTimeout(timer);}
+}
+void refreshActiveRooms();setInterval(refreshActiveRooms,60000);

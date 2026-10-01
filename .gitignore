@@ -24,3 +24,8 @@ android/build/
 cloud/dist/
 sites/dist/
 sites/.openai/
+
+browser-ai/node_modules/
+browser-ai/dist/
+
+browser-ai/.worker-node-test.mjs

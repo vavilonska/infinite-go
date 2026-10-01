@@ -329,3 +329,61 @@ test('creation quota is bounded, persists, serializes races, and caps daily room
   await limiter.alarm();
   assert.equal(limiter.counts.day.count, 100);
 });
+
+test('spectator reads never claim seats, expose tokens or hidden nigiri, and cannot mutate', async () => {
+ const f=fixture();const created=await f.request('/api/rooms',{method:'POST',body:{colorSetup:'nigiri'}});const a=created.data,path='/api/rooms/'+a.code;
+ const before=structuredClone(f.rooms.get(a.code).instance.room);
+ const watched=await f.request(path+'/watch');assert.equal(watched.status,200);assert.equal(watched.data.spectator,true);assert.equal(watched.data.seat,null);assert.equal(watched.data.role,null);assert.equal(watched.data.players.W,false);assert.equal(watched.data.token,undefined);assert.equal(watched.data.setup.count,undefined);assert.equal(JSON.stringify(watched.data).includes(a.token),false);
+ assert.deepEqual(f.rooms.get(a.code).instance.room,before);
+ for(const suffix of ['/actions','/setup'])assert.equal((await f.request(path+suffix,{method:'POST',body:{type:'play',revision:0,id:1,index:0,at:0}})).status,401);
+ assert.equal((await f.request(path+'/watch',{method:'POST',body:{}})).status,405);
+ assert.equal((await f.request(path+'/join',{method:'POST',body:{}})).status,200);
+ const next=await f.request(path+'/watch');assert.equal(next.data.players.W,true);assert.equal(next.data.revision,1);
+ for(let n=0;n<28;n++)assert.equal((await f.request(path+'/watch')).status,200);
+ assert.equal((await f.request(path+'/watch')).status,429);
+});
+
+test('spectator sees authoritative moves and branching without modifying their revisions',async()=>{
+ const f=fixture(),{a,b,path}=await players(f);
+ let r=await action(f,path,a.token,move(1,0));assert.equal(r.status,200);
+ r=await action(f,path,b.token,move(r.data.revision,1,1));assert.equal(r.status,200);
+ r=await action(f,path,a.token,move(r.data.revision,2,0));assert.equal(r.status,200);
+ const viewed=await f.request(path+'/watch');assert.equal(viewed.status,200);assert.equal(viewed.data.revision,r.data.revision);assert.equal(viewed.data.game.lines.length,2);assert.deepEqual(viewed.data.game,r.data.game);
+ assert.equal((await f.request(path, {token:a.token})).data.revision,r.data.revision);
+});
+
+test('cloud restores into a fresh room with locked rules and both-player confirmation',async()=>{
+ const f=fixture(),{a,b,path}=await players(f,{size:19,resultMode:'weighted-margin',pruningMode:'komi'});
+ const E=await import('../engine.js');const saved=E.createGame(19,6.5,9,{resultMode:'weighted-margin',pruningMode:'komi'});for(let i=0;i<130;i++)E.play(saved,1,i,i);
+ assert.ok(JSON.stringify(saved).length>4096);
+ const created=await f.request('/api/rooms',{method:'POST',body:{restoreGame:saved,hostColor:'W'}});assert.equal(created.status,201);const r=created.data,p='/api/rooms/'+r.code;assert.notEqual(r.code,a.code);assert.notEqual(r.token,a.token);assert.equal(r.role,'W');assert.deepEqual(r.game,saved);assert.equal(r.restoration.pending,true);
+ assert.equal((await f.request(p+'/restore-confirm',{method:'POST',token:r.token,body:{revision:0}})).status,409);
+ const guest=(await f.request(p+'/join',{method:'POST',body:{}})).data;
+ assert.equal((await action(f,p,guest.token,move(guest.revision,131,130))).status,409);
+ assert.equal((await f.request(p+'/restore-confirm',{method:'POST',body:{revision:guest.revision}})).status,401);
+ const first=await f.request(p+'/restore-confirm',{method:'POST',token:r.token,body:{revision:guest.revision}});assert.equal(first.status,200);assert.equal(first.data.restoration.pending,true);
+ assert.equal((await f.request(p+'/restore-confirm',{method:'POST',token:guest.token,body:{revision:guest.revision}})).status,409);
+ const second=await f.request(p+'/restore-confirm',{method:'POST',token:guest.token,body:{revision:first.data.revision}});assert.equal(second.status,200);assert.equal(second.data.restoration.pending,false);
+ assert.equal((await action(f,p,guest.token,move(second.data.revision,131,130))).status,200);
+ assert.equal((await f.request(path,{token:a.token})).data.game.lines[0].history.length,0);
+ assert.equal((await f.request('/api/rooms',{method:'POST',body:{restoreGame:saved,size:9}})).status,400);
+ const bad=structuredClone(saved);bad.lines[0].weight={n:'2',d:'1'};assert.equal((await f.request('/api/rooms',{method:'POST',body:{restoreGame:bad}})).status,400);
+ const huge=structuredClone(saved);huge.lines[0].history=Array(513).fill({type:'pass',color:'B'});assert.equal((await f.request('/api/rooms',{method:'POST',body:{restoreGame:huge}})).status,400);
+});
+
+test('cloud new mode creation cannot silently choose a board size',async()=>{const f=fixture();assert.equal((await f.request('/api/rooms',{method:'POST',body:{resultMode:'weighted-margin'}})).status,400);});
+
+test('active-room count records only committed game changes, never readers or rejected moves',async()=>{
+ const f=fixture(),{a,b,path}=await players(f);assert.equal((await f.request('/api/stats')).data.activeRooms,0);
+ await f.request(path,{token:a.token});await f.request(path+'/watch');assert.equal((await f.request('/api/stats')).data.activeRooms,0);
+ assert.equal((await action(f,path,b.token,move(1,0))).status,403);assert.equal((await f.request('/api/stats')).data.activeRooms,0);
+ assert.equal((await action(f,path,a.token,move(1,0))).status,200);
+ const stats=(await f.request('/api/stats')).data;assert.equal(stats.activeRooms,1);assert.equal(stats.windowSeconds,300);assert.equal(JSON.stringify(stats).includes(a.code),false);assert.equal(JSON.stringify(stats).includes(a.token),false);
+ const before=structuredClone(f.limiter.activity);await f.request(path+'/watch');await f.request('/api/stats');assert.deepEqual(f.limiter.activity,before);
+ f.limiter.activity[a.code]=Date.now()-300001;assert.equal((await f.request('/api/stats')).data.activeRooms,0);
+});
+test('activity aggregation failure cannot roll back or fail a committed move',async()=>{
+ const f=fixture(),{a,path}=await players(f);const original=f.env.ROOM_CREATION.getByName;f.env.ROOM_CREATION.getByName=()=>({fetch:async()=>{throw new Error('unavailable');}});
+ const played=await action(f,path,a.token,move(1,0));assert.equal(played.status,200);assert.equal(played.data.game.lines[0].history.length,1);
+ f.env.ROOM_CREATION.getByName=original;assert.equal((await f.request(path,{token:a.token})).data.game.lines[0].history.length,1);
+});

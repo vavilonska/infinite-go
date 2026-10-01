@@ -1,3 +1,4 @@
+import {restoredGame,restorePublic,requireRestoreReady,confirmRestoration} from './room-restore.js';
 // A small, dependency-free, authoritative server for trusted home LANs.
 import { createServer as createHttpServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -11,6 +12,12 @@ import { createGame, lineById, replay, play, toggleDead, approveScore, resume, p
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const STATIC_FILES = new Map([
+  ['/browser-provider.js',['browser-provider.js','text/javascript; charset=utf-8']],
+  ['/browser-ai/settings.js',['browser-ai/settings.js','text/javascript; charset=utf-8']],
+  ['/browser-ai/models.js',['browser-ai/models.js','text/javascript; charset=utf-8']],
+  ...['engine.worker.js','engine.worker.js.LEGAL.txt','THIRD-PARTY-LICENSES.txt','runtime-info.json','wasm/tfjs-backend-wasm.wasm','wasm/tfjs-backend-wasm-simd.wasm','wasm/tfjs-backend-wasm-threaded-simd.wasm'].map(name=>['/browser-ai/dist/'+name,['browser-ai/dist/'+name,name.endsWith('.wasm')?'application/wasm':name.endsWith('.js')?'text/javascript; charset=utf-8':'text/plain; charset=utf-8']]),
+  ['/ai-analysis.js',['ai-analysis.js','text/javascript; charset=utf-8']],
+  ['/ai-worker.js',['ai-worker.js','text/javascript; charset=utf-8']],
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
@@ -47,13 +54,13 @@ function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(data));
 }
-async function readJson(req) {
+async function readJson(req,maxBytes=4096) {
   if ((req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/json') reject(415, 'Send application/json');
   const chunks = [];
   let bytes = 0;
   for await (const chunk of req) {
     bytes += chunk.length;
-    if (bytes > 4096) reject(413, 'Request body is too large');
+    if (bytes > maxBytes) reject(413, 'Request body is too large');
     chunks.push(chunk);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { reject(400, 'Invalid JSON'); }
@@ -79,7 +86,7 @@ function authenticate(req, room) {
   reject(401, 'Invalid reconnect token');
 }
 const snapshot = (room, seat) => ({
-  code: room.code, seat, role:room.roles?.[seat]??null, revision: room.revision, game: room.game, setup:publicNigiri(room.nigiri),
+  code: room.code, seat, role:room.roles?.[seat]??null, revision: room.revision, game: room.game, restoration:restorePublic(room), setup:publicNigiri(room.nigiri),
   players: { B: Boolean(room.tokens.A), W: Boolean(room.tokens.B) },
 });
 
@@ -104,38 +111,49 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
       }
       checkOrigin(req);
       if (path === '/api/health' && req.method === 'GET') {
-        sendJson(res, 200, { ok: true, mode: 'lan' });
+        sendJson(res, 200, { ok: true, mode: 'lan', features: { spectating: true, restoreGame: true, resultModes: true } });
         return;
       }
+      if(path==='/api/stats'&&req.method==='GET'){const now=Date.now();sendJson(res,200,{ok:true,activeRooms:[...rooms.values()].filter(room=>now-room.touched<roomTtlMs&&room.lastGameActionAt>now-300000).length,windowSeconds:300,asOf:now,approximate:false});return;}
       if (path === '/api/rooms' && req.method === 'GET') {
         for (const [code, room] of rooms) if (Date.now() - room.touched > roomTtlMs) rooms.delete(code);
         sendJson(res, 200, { rooms: [...rooms.values()].map(room => ({ code: room.code, players: { B: Boolean(room.tokens.A), W: Boolean(room.tokens.B) } })) });
         return;
       }
       if (path === '/api/rooms' && req.method === 'POST') {
-        const body = await readJson(req);
-        fields(body, ['size', 'komi', 'branchLimitExponent','pruningMode','compensationC','colorSetup','hostColor']);
+        const body = await readJson(req,100000);
+        if(!body?.restoreGame&&Buffer.byteLength(JSON.stringify(body))>4096)reject(413,'Request body is too large');
+        fields(body, ['size', 'komi', 'branchLimitExponent','pruningMode','compensationC','colorSetup','hostColor','restoreGame','resultMode','resignationMargin']);
+        if(body.restoreGame===undefined&&Object.hasOwn(body,'resultMode')&&!Object.hasOwn(body,'size'))reject(400,'Choose a board size');
         if(body.colorSetup!==undefined&&!['manual','nigiri'].includes(body.colorSetup))reject(400,'Invalid color setup');
         if(body.hostColor!==undefined&&!['B','W'].includes(body.hostColor))reject(400,'Invalid host color');
         let game;
-        try { game = createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9,{pruningMode:Object.hasOwn(body,'pruningMode')?body.pruningMode:'none',compensationC:Object.hasOwn(body,'compensationC')?body.compensationC:'32'}); } catch (error) { reject(400, error.message); }
+        try { game = body.restoreGame!==undefined?restoredGame(body):createGame(body.size ?? 9, body.komi ?? 7.5, Object.hasOwn(body,'branchLimitExponent') ? body.branchLimitExponent : 9,{resultMode:body.resultMode,resignationMargin:body.resignationMargin,pruningMode:Object.hasOwn(body,'pruningMode')?body.pruningMode:'none',compensationC:Object.hasOwn(body,'compensationC')?body.compensationC:'32'}); } catch (error) { reject(400, error.message); }
         if (body.size === null || body.komi === null) reject(400, 'Size and komi cannot be null');
         for (const [code, room] of rooms) if (Date.now() - room.touched > roomTtlMs) rooms.delete(code);
         if (rooms.size >= maxRooms) reject(503, 'Room limit reached; restart the host to clear old rooms');
         let code;
         do { code = newCode(); } while (rooms.has(code));
         const token = randomBytes(32).toString('base64url');
-        const room = { code, game, revision: 0, tokens: { A: token, B: null }, roles:body.colorSetup==='nigiri'?null:{A:body.hostColor??'B',B:body.hostColor==='W'?'B':'W'}, nigiri:body.colorSetup==='nigiri'?createNigiri():null, touched: Date.now() };
+        const room = { code, game, ...(body.restoreGame!==undefined?{restoration:{confirmations:[]}}:{}), revision: 0, tokens: { A: token, B: null }, roles:body.colorSetup==='nigiri'?null:{A:body.hostColor??'B',B:body.hostColor==='W'?'B':'W'}, nigiri:body.colorSetup==='nigiri'?createNigiri():null, touched: Date.now() };
         rooms.set(code, room);
         sendJson(res, 201, { ...snapshot(room, 'A'), token });
         return;
       }
-      const match = /^\/api\/rooms\/([A-Za-z2-9]{6})(?:\/(join|actions|setup))?$/.exec(path);
+      const match = /^\/api\/rooms\/([A-Za-z2-9]{6})(?:\/(join|actions|setup|watch|restore-confirm))?$/.exec(path);
       if (!match) reject(404, 'Not found');
       const code = match[1].toUpperCase();
       const action = match[2];
       const room = rooms.get(code);
       if (!room || Date.now() - room.touched > roomTtlMs) { rooms.delete(code); reject(404, 'Room not found or expired'); }
+      if (action === 'watch') {
+        if (req.method !== 'GET') reject(405, 'Spectating is read-only');
+        const minute = Math.floor(Date.now() / 60000);
+        if (room.watchMinute !== minute) { room.watchMinute = minute; room.watchRequests = 0; }
+        if (++room.watchRequests > 30) reject(429, 'Spectator rate limit; wait and retry');
+        sendJson(res, 200, { ...snapshot(room, null), spectator: true });
+        return;
+      }
       if (action === 'join' && req.method === 'POST') {
         fields(await readJson(req), []);
         if (room.tokens.B) reject(409, 'This room already has two players; reconnect with your saved token');
@@ -152,6 +170,8 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
         sendJson(res, 200, snapshot(room, seat));
         return;
       }
+      if(action==='restore-confirm'&&req.method==='POST'){const next=confirmRestoration(room,seat,await readJson(req));rooms.set(code,next);sendJson(res,200,snapshot(next,seat));return;}
+      if(req.method==='POST')requireRestoreReady(room);
       if(action==='setup'&&req.method==='POST'){
         const body=await readJson(req);fields(body,['type','revision','guess','color'],['type','revision']);
         if(body.revision!==room.revision)reject(409,'State changed; refresh and try again',snapshot(room,seat));
@@ -191,6 +211,7 @@ export function createServer({ staticDir = ROOT, maxRooms = 100, roomTtlMs = 24 
         if (error instanceof HttpError) throw error;
         reject(422, error.message);
       }
+      if(body.type!=='approveScore'&&JSON.stringify(room.game)!==JSON.stringify(game))room.lastGameActionAt=Date.now();
       room.game = game;
       room.revision++;
       sendJson(res, 200, snapshot(room, seat));

@@ -14,8 +14,11 @@ if ext=='zip':
 else:
  with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as t:node=t.extractfile(prefix+'/'+binary).read();license=t.extractfile(prefix+'/LICENSE').read()
 exe=stage/'runtime'/('node.exe' if args.platform=='win' else 'node');exe.write_bytes(node);exe.chmod(0o755);(stage/'runtime'/'NODE-LICENSE').write_bytes(license)
-files=['index.html','style.css','app.js','engine.js','annotations.js','tree.js','ai.js','providers.js','nigiri.js','host-address.js','remote-room.js','remote-config.js','matchmaking-client.js','deployment.js','manifest.webmanifest','server.js','package.json','LICENSE','NOTICE','README.md','README.en.md','katago-bridge.js','katago-analysis.cfg']
+files=['index.html','style.css','app.js','engine.js','annotations.js','tree.js','ai.js','browser-provider.js','ai-analysis.js','ai-worker.js','providers.js','nigiri.js','host-address.js','remote-room.js','remote-config.js','matchmaking-client.js','deployment.js','manifest.webmanifest','server.js','room-restore.js','package.json','LICENSE','NOTICE','README.md','README.en.md','katago-bridge.js','katago-analysis.cfg']
 for name_ in files:shutil.copy2(root/name_,stage/'app'/name_)
+(stage/'app'/'browser-ai').mkdir(exist_ok=True)
+for filename in ['models.js','settings.js']:shutil.copy2(root/'browser-ai'/filename,stage/'app'/'browser-ai'/filename)
+if (root/'browser-ai'/'dist').exists():shutil.copytree(root/'browser-ai'/'dist',stage/'app'/'browser-ai'/'dist',dirs_exist_ok=True)
 for directory in ['assets','docs','local-ai']:shutil.copytree(root/directory,stage/'app'/directory,dirs_exist_ok=True)
 shutil.copy2(root/'packaging'/'launcher.mjs',stage/'launcher.mjs');shutil.copy2(root/'LICENSE',stage/'LICENSE');shutil.copy2(root/'NOTICE',stage/'NOTICE')
 (stage/'RUNTIME.txt').write_text(f'Official Node.js {args.node_version}, {args.platform} {args.arch}\nDownload: {base+archive}\nSHA256: {expected}\nThird-party license: runtime/NODE-LICENSE\nProject source: https://github.com/vavilonska/infinite-go\n',encoding='utf-8')

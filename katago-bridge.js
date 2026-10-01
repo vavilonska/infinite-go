@@ -183,7 +183,7 @@ export function createBridge({ engine, origins = DEFAULT_ORIGINS } = {}) {
       }
       const path = new URL(req.url, 'http://localhost').pathname;
       if (req.method === 'GET' && path === '/capabilities') {
-        json(res, engine.alive === false ? 503 : 200, { name: 'Local KataGo', analyze: true, generateMove: true, cancel: true, boardSizes: [9, 13, 19], rules: [RULE_NAME], winratePerspective: 'black', maxVisits: engine.maxVisits, available: engine.alive !== false });
+        json(res, engine.alive === false ? 503 : 200, { name: 'Local KataGo', analyze: true, generateMove: true, cancel: true, boardSizes: [9, 13, 19], rules: [RULE_NAME], winratePerspective: 'black', maxConcurrentAnalyses:1, modelName:'服务端已配置 KataGo 模型', threads:1, maxVisits: engine.maxVisits, available: engine.alive !== false });
         return;
       }
       if (req.method !== 'POST' || !['/analyze', '/generate-move', '/cancel'].includes(path)) fail(404, 'Not found');
