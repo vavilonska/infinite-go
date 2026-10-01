@@ -1,6 +1,6 @@
 # Native online edition / 原生在线版
 
-Public online entrance: paused while a neutral address is prepared.
+Public online entrance: [https://infinite-go-online.vavilonska7.chatgpt.site](https://infinite-go-online.vavilonska7.chatgpt.site).
 
 The repository's GitHub Pages build stays static with no default game API. This separate build uses a native Worker + D1 backend and its own same-origin API. It reuses `engine.js`, `nigiri.js` and the authoritative room/matchmaking code under `cloud/`; there is no second implementation of the game rules. The Cloudflare Durable Object adapter is retained as an optional backup.
 

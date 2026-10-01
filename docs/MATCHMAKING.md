@@ -16,7 +16,7 @@
 
 ## 站点与部署
 
-GitHub Pages 是静态版本，不默认连接远程 API。主要在线版本（公开地址更新中）使用 Sites 的原生 Worker + D1。前端通过能力检查选择实时 WebSocket 或 HTTP 状态同步，围棋规则使用同一引擎。部署状态未确认前，不将等待页当作可用匹配服务。
+GitHub Pages 是静态版本，不默认连接远程 API。[主要在线版本](https://infinite-go-online.vavilonska7.chatgpt.site)使用 Sites 的原生 Worker + D1。前端通过能力检查选择实时 WebSocket 或 HTTP 状态同步，围棋规则使用同一引擎。部署状态未确认前，不将等待页当作可用匹配服务。
 
 ### 可选 Cloudflare 后备更新
 
