@@ -7,7 +7,7 @@ async function call(path,body,token,status=200){const res=await fetch(origin+pat
 const health=await call('/api/health');assert.equal(health.mode,'cloud');
 const a=await call('/api/rooms',{size:9,colorSetup:'manual',hostColor:'B'},null,201);
 assert.ok(a.token);const path='/api/rooms/'+a.code;
-const b=await call(path+'/join',{},null);assert.ok(b.token);assert.notEqual(a.token,b.token);
+const b=await call(path+'/join',{},null);assert.ok(b.token);assert.equal(a.token===b.token,false,'Seat credentials must differ');
 const clients=[];
 async function socket(token){const url=new URL(origin+path+'/events');url.protocol=url.protocol==='https:'?'wss:':'ws:';
  const ws=new WebSocket(url,{headers:{Origin:headers.Origin}});clients.push(ws);const messages=[];let wait;

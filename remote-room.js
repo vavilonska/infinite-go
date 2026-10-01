@@ -76,7 +76,7 @@ function validSnapshot(data, code) {
 
 export class RemoteRoomClient {
   constructor({ endpoint, fetchImpl = globalThis.fetch?.bind(globalThis), WebSocketImpl = globalThis.WebSocket,
-    setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now, random = Math.random,
+    setTimer = globalThis.setTimeout.bind(globalThis), clearTimer = globalThis.clearTimeout.bind(globalThis), now = Date.now, random = Math.random,
     onSnapshot = () => {}, onStatus = () => {} }) {
     Object.defineProperty(this, 'endpoint', { value: remoteEndpoint(endpoint), enumerable: true });
     this.fetchImpl = fetchImpl; this.WebSocketImpl = WebSocketImpl;

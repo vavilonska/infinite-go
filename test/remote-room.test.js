@@ -88,6 +88,31 @@ test('create has no existing token; REST auth stays in headers and websocket aut
   assert.equal(h.timers.size, 0);
 });
 
+test('default browser timers retain the global receiver across requests and connection cleanup', async t => {
+  const timers = new Map();
+  let nextTimer = 0;
+  t.mock.method(globalThis, 'setTimeout', function (fn, delay) {
+    assert.ok(this === globalThis, 'Browser setTimeout requires the global receiver');
+    const id = ++nextTimer;
+    timers.set(id, { fn, delay });
+    return id;
+  });
+  t.mock.method(globalThis, 'clearTimeout', function (id) {
+    assert.ok(this === globalThis, 'Browser clearTimeout requires the global receiver');
+    timers.delete(id);
+  });
+  const client = new RemoteRoomClient({ endpoint: ENDPOINT, now: () => NOW,
+    fetchImpl: async () => response({ ...snapshot(), token: TOKEN }),
+    WebSocketImpl: class { close() {} },
+  });
+  await client.create({});
+  assert.equal(timers.size, 0, 'Completed HTTP requests release their timeout');
+  client.start();
+  assert.equal(timers.size, 2, 'Expiry and socket authentication deadlines are scheduled');
+  client.close();
+  assert.equal(timers.size, 0, 'Leaving the room clears all browser timers');
+});
+
 test('resume refuses credentials for another endpoint before any fetch', async () => {
   const h = harness();
   await assert.rejects(h.client.resume({ endpoint: 'https://other.example', code: CODE, token: TOKEN }), /其他服务/);
