@@ -1,4 +1,4 @@
-# Cloudflare 免费熟人房间 / Free friend rooms
+# Cloudflare 免费在线版 / Free online edition
 
 这是保留的可选自托管 / 后备适配器，不是 GitHub Pages 的默认公共服务。静态版不预填 Cloudflare 地址；主要在线联机入口由 Sites 版本提供。不要将此部署教程误认为用户必须配置 Cloudflare 才能使用在线版。
 
@@ -22,19 +22,32 @@ Cloudflare 适配器继续复用同一个围棋引擎、朋友房间和可选匹
 
 官方工具：[Wrangler 安装与更新](https://developers.cloudflare.com/workers/wrangler/install-and-update/)、[Wrangler 登录](https://developers.cloudflare.com/workers/wrangler/commands/#login)、[WebSocket 休眠](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)。Wrangler 的登录会授权持续部署访问：由账户所有者在自己的电脑完成登录和同意；不要把登录凭据、API token 或本地认证文件上传到仓库、聊天或公共 CI 日志。
 
-在本仓库根目录，安装 Node.js 22+，执行：
+在干净仓库根目录，使用 Node.js 24（完整测试包含 `node:sqlite`），执行：
 
 ```sh
 npm test
-npx wrangler@4.145.0 login
+node scripts/build-static.mjs
+node cloud/build.mjs
+npx wrangler@4.145.0 deploy --dry-run --config cloud/wrangler.jsonc
 npx wrangler@4.145.0 deploy --config cloud/wrangler.jsonc
 ```
 
 登录与账户选择由本人操作。部署前在 Cloudflare Dashboard 确认 Workers Free，没有购买、付款或套餐升级步骤。若要求付费，停止而不是继续。
 
-配置使用 `new_sqlite_classes` migration，不能改成旧 KV Durable Object。默认允许的网页 origin 是 `https://vavilonska.github.io`；若托管另一个前端，按配置添加它的准确 origin，不用 `*`。房间 API 不接收 Cookie，重连凭据通过 Authorization 或 WebSocket 的首条认证消息传递，不放 URL。
+`node cloud/build.mjs` 清理并重建本副本的 `cloud/dist`，复用静态构建白名单，只包含游戏前端、共享引擎和图标。仅生成目录的 `remote-config.js` 使用 `location.origin` 作为默认 API；根文件保持空默认值，Sites 构建与 Pages 工作流不变。`cloud/online-entry.js` 将 `/api`、`/api/*` 和房间 WebSocket 交给原权威服务，其余资源通过官方 [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/) 的 `ASSETS` binding 返回。资产缺失不回退首页，API 错误继续返回 JSON；在线版离线缓存也不拦截 API 导航或读取。
 
-部署命令返回真实 `https://…workers.dev` 地址后，先验证 `/api/health` 返回 `mode: "cloud"` 和 `protocol: 1`。在两份相互独立的浏览器会话中填写这个地址，创建 / 加入房间、交替落子、刷新后点击恢复连接、确认双方看到相同版本。确认非法颜色和旧版本动作被拒绝，并保留 JSON 导出测试。只有完成这些步骤后，才可在自己的部署副本配置实际 origin。项目公共 GitHub Pages 保持静态版，不默认指向此后备服务。
+Cloudflare 默认会将 `/index.html` 重定向到 `/`。因此在线版只预缓存并匹配直接返回页面的根路径 `./`，不将跟随重定向的首页响应用于浏览器导航；该缓存策略纳入在线版版本哈希。旧版本会通过正常 service worker 更新淘汰旧缓存，请先导出棋局，再关闭本站所有标签页并重新打开以启用更新，不需要清除用户站点数据。
+
+配置使用 `new_sqlite_classes` migration，不能改成旧 KV Durable Object。保留 `v1` 的 `GameRoom` / `RoomCreationLimiter`，`v2` 增加 `MatchmakingQueue`；不删除旧类、重命名迁移或重建现有房间数据。默认允许的网页 origin 是 `https://vavilonska.github.io`，同源在线版无需扩展名单；若确实托管另一个前端，按配置添加它的准确 origin，不用 `*`。房间 API 不接收 Cookie，重连凭据通过 Authorization 或 WebSocket 的首条认证消息传递，不放 URL。
+
+部署命令返回真实 `https://…workers.dev` 地址后，先验证 `/` 返回完整 HTML、JS/CSS/图标正常，再验证 `/api/health` 返回 `ok: true`、`mode: "cloud"`、`protocol: 1` 和 `features.matchmaking: true`。在两份相互独立的浏览器会话中使用默认同源服务，验证朋友房间、匹配、交替落子、刷新后恢复连接和 JSON 导出；确认非法颜色和旧版本动作被拒绝。也在 GitHub 静态版的自定义 HTTPS 服务设置中验证连接。必要服务检查命令：
+
+```sh
+node cloud/smoke.mjs https://实际部署-origin
+node cloud/matchmaking-smoke.mjs https://实际部署-origin
+```
+
+这些脚本会消耗短期队列和房间创建额度，完整通过一次即可；构建或 dry-run 通过不代表线上验收成功。完整验收前不增加公共网页 2 链接；网页 1 继续使用 Sites，朋友应选择同一网页，两边的房间和匹配不互通。项目公共 GitHub Pages 保持静态版，不默认指向此后备服务。
 
 仓库不包含 Cloudflare 账户 ID、token、认证缓存或付费配置。没有 GitHub → Cloudflare 自动部署绑定；开源使用者可以在自己的账户重复上述步骤。
 
@@ -47,3 +60,5 @@ Rooms expire 24 hours after creation. Export before expiry or an outage. Credent
 Use Workers Free with SQLite Durable Objects and WebSocket hibernation. Free quotas can fail closed; do not upgrade or add payment information to continue play. Public-service abuse can exhaust quotas. Explicit technical state/rate/complexity limits reject operations atomically and preserve the current game for export; they are not a silent change to unlimited branching.
 
 The account owner runs the commands above and personally approves Wrangler login on their computer. Never share tokens or auth caches. Confirm the Free plan before deploying. Use the actual returned workers.dev origin, check `/api/health`, and verify two independent browser clients, legal/illegal moves, reconnect and export before configuring your own deployment copy. Public GitHub Pages remains static. Keep CORS origins exact. No automatic GitHub account binding or paid resources are configured.
+
+Use Node.js 24. `node cloud/build.mjs` rebuilds only `cloud/dist` from the shared frontend whitelist, with a same-origin default API in generated configuration. The online entry uses official Workers Static Assets and keeps API/WebSocket routing authoritative; API failures and offline API navigation never fall back to HTML. Root remote configuration, Sites and Pages defaults remain unchanged. Preserve SQLite migrations `v1` and `v2`. Validate the full root page, assets, matchmaking health capability and both smoke scripts, then two independent browser sessions before publishing a second-site link. Sites and Cloudflare have separate rooms and queues; friends must choose the same site.

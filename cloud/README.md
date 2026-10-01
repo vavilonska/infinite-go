@@ -1,38 +1,45 @@
-# Friend room Worker
+# Online frontend and room Worker
 
-This optional backend runs on Cloudflare Workers Free with **SQLite-backed Durable Objects**. It imports the same `engine.js` and `nigiri.js` as local/LAN play. It has no accounts, public room directory, matchmaking, chat, or AI service. The local game and its unlimited-branch rules do not depend on this backend.
+This optional online edition runs on Cloudflare Workers Free with **SQLite-backed Durable Objects** and Workers Static Assets. It imports the same `engine.js` and `nigiri.js` as local/LAN play and serves the existing full frontend. It supports private friend rooms and anonymous rule-matched games, with no accounts, public room directory, chat, ranking, or hosted AI service. The local game and its unlimited-branch rules do not depend on this backend.
 
 ## Configure and run
 
-From the repository root, use an official Wrangler installation:
+From the repository root, use Node.js 24 and the verified official Wrangler version:
 
 ```sh
-npx wrangler dev --config cloud/wrangler.jsonc
-npx wrangler deploy --config cloud/wrangler.jsonc
+node cloud/build.mjs
+npx wrangler@4.145.0 dev --config cloud/wrangler.jsonc
+npx wrangler@4.145.0 deploy --dry-run --config cloud/wrangler.jsonc
+npx wrangler@4.145.0 deploy --config cloud/wrangler.jsonc
 ```
 
 Deployment requires the owner's Cloudflare account and authorization. There are no credentials in this directory. Keep the account on Workers Free to retain its fail-on-quota behavior; this configuration is not a spending cap for a Paid account. Free quotas can be shared with other Workers in the same account.
 
-The config creates two SQLite Durable Object classes using the `v1` migration:
+The config preserves two SQLite Durable Object classes in the `v1` migration and adds the queue in `v2`:
 
 - `ROOMS` → `GameRoom`, one object per random room code
 - `ROOM_CREATION` → `RoomCreationLimiter`, one bounded creation quota object
+- `MATCHMAKING` → `MatchmakingQueue`, the bounded anonymous rule-matching queue (`v2`)
+
+Do not rename these migrations, recreate existing classes or delete stored rooms to deploy an update.
 
 `ALLOWED_ORIGINS` is a comma-separated list of exact HTTPS origins. The repository's Pages origin, `https://vavilonska.github.io`, and the request's own origin are allowed. Wildcards, paths, `null` origins, and credentialed wildcard CORS are not supported. Native clients may omit `Origin`. Browser credentials/cookies are not needed.
 
-Set the frontend's remote endpoint to the verified Worker HTTPS origin after deployment. The public Pages build does not bundle or run this Worker.
+`cloud/build.mjs` rebuilds only `cloud/dist` from the shared static whitelist. Generated remote configuration uses `location.origin`; root `remote-config.js` remains unchanged. `online-entry.js` forwards `/api` and `/api/*` (including room WebSockets) to the existing authority and other requests to `ASSETS.fetch`. API routes run before assets and never fall back to HTML. The generated service worker leaves API requests, including navigations, on the network. Missing static files return 404. Sites and public Pages behavior are preserved. See [Workers Static Assets routing](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/).
+
+Cloudflare's default HTML handling redirects `/index.html` to `/`. The online service worker precaches and matches the directly served root `./` for navigation, avoiding cached redirected responses. This policy is part of the online cache version hash, so normal service worker updates replace the old cache. Export first, then close all tabs for this site and reopen to activate an update; clearing user site data is unnecessary. See [HTML canonicalization](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/).
 
 An official esbuild installation can also produce one ES module for deployment tooling:
 
 ```sh
-esbuild cloud/worker.js --bundle --format=esm --platform=browser --outfile=cloud/dist/worker.js
+esbuild cloud/online-entry.js --bundle --format=esm --platform=browser --outfile=.build/cloud-worker.js
 ```
 
 Bundling alone does not provision the Durable Object bindings or SQLite migration; deployment still needs the configuration above. No Node compatibility flag or npm runtime dependency is required.
 
 ## Protocol
 
-`GET /api/health` returns `{ "ok": true, "mode": "cloud", "protocol": 1 }`.
+`GET /api/health` returns `{ "ok": true, "mode": "cloud", "protocol": 1, "features": { "matchmaking": true } }` when the matchmaking binding is enabled.
 
 REST follows the LAN API shapes:
 
@@ -91,10 +98,13 @@ Rate failures return `429`, `retryAfterMs`, and the `Retry-After` header. Rate c
 ## Verify
 
 ```sh
-node --test test/cloud-worker.test.js
+node --test test/cloud-worker.test.js test/cloud-online.test.js test/cloud-matchmaking.test.js
 node cloud/smoke.mjs http://127.0.0.1:8787
+node cloud/matchmaking-smoke.mjs http://127.0.0.1:8787
 ```
 
 Unit/integration tests mock storage and socket plumbing while using the real shared game engine. The smoke script requires a running Worker runtime and exercises actual HTTP/WebSocket clients. Local success does not verify a public deployment or its account permissions.
+
+Check the deployed `/` page and its JS/CSS/icons, same-origin default service, health capability and two independent browser clients for friends, matching, refresh/reconnect and export before publishing a second-site link. The smoke scripts consume creation quota; one successful complete pass is enough. Sites remains the primary online edition, and its rooms/queue are separate from Cloudflare: friends must choose the same site. Never publish a placeholder backup link or treat an API-only endpoint as a playable page.
 
 Official references: [SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/), [WebSocket hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/), [alarms](https://developers.cloudflare.com/durable-objects/api/alarms/), [Free-plan quotas](https://developers.cloudflare.com/durable-objects/platform/pricing/).

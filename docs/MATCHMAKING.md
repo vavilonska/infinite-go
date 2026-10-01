@@ -24,10 +24,14 @@ GitHub Pages 是静态版本，不默认连接远程 API。[主要在线版本](
 
 ```sh
 npm test
+node cloud/build.mjs
+npx wrangler@4.145.0 deploy --dry-run --config cloud/wrangler.jsonc
 npx wrangler@4.145.0 deploy --config cloud/wrangler.jsonc
 ```
 
 这次部署新增匹配队列的 SQLite Durable Object migration。不要删除或改写已有 `v1` migration，否则可能破坏现有房间；不要改为旧 KV 后端，不升级套餐。登录或新增账户授权由账户所有者亲自完成，不把凭据发聊天或提交仓库。
+
+Cloudflare 构建将完整游戏页面和静态资源与 API 一同部署，只有 `cloud/dist` 的默认 API 指向同源。根静态配置仍为空，Sites 继续作为主要在线版。按 [Cloudflare 部署说明](CLOUDFLARE.md)验证根页面和双客户端后，才可公布后备完整网页链接；两个服务的房间和队列不互通，朋友要选择同一网页。
 
 部署后 `/api/health` 必须明确报告 `features.matchmaking: true`。仅有 HTTP 200 或旧 `protocol: 1` 不能证明匹配已部署。随后用两份独立浏览器会话测试相同规则配对、不同规则等待、取消、刷新恢复、猜先选色、交替落子和 JSON 导出；检查没有重复配对。记录实际部署版本和源码 SHA 后再宣称线上匹配可用。
 

@@ -1,10 +1,16 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "infinite-go-rooms",
-  "main": "worker.js",
+  "main": "online-entry.js",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "observability": { "enabled": false },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api", "/api/*"],
+    "not_found_handling": "none"
+  },
   "vars": { "ALLOWED_ORIGINS": "https://vavilonska.github.io" },
   "durable_objects": {
     "bindings": [
