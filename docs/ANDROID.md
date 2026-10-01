@@ -4,6 +4,8 @@
 
 ## 安装和使用
 
+本 App 使用 Java + 系统 WebView，APK 不包含按 CPU 架构分发的原生 `.so` 库，因此只需一个通用 `infinite-go.apk`，无需分别下载 ARM64 / ARMv7 / x86 版本。仍需满足下述 Android 与 WebView 版本要求。
+
 - 需要 Android 8.0（API 26）或更新版本，并保持 Android System WebView / Chrome 更新。游戏使用现代 JavaScript（包括 BigInt、structuredClone）；旧 WebView 即使系统版本符合，也可能无法运行
 - 下载已经签名的 `infinite-go.apk`，由你在系统提示中决定是否允许该下载来源安装。**`infinite-go-unsigned.apk` 不能直接安装**。不要关闭 Play Protect 或绕过安全警告
 - 打开即为离线同屏：规则、分叉、自由选线、猜先、实验剪枝、计分均来自根目录共享代码，没有 Android 专用的第二套规则
