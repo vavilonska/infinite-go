@@ -15,6 +15,7 @@ const STATIC_FILES = new Map([
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/local-ai/panel.js', ['local-ai/panel.js', 'text/javascript; charset=utf-8']],
+  ['/matchmaking-client.js', ['matchmaking-client.js', 'text/javascript; charset=utf-8']],
   ['/remote-room.js', ['remote-room.js', 'text/javascript; charset=utf-8']],
   ['/remote-config.js', ['remote-config.js', 'text/javascript; charset=utf-8']],
   ['/host-address.js', ['host-address.js', 'text/javascript; charset=utf-8']],

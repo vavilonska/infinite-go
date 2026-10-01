@@ -1,0 +1,14 @@
+{
+  "name": "infinite-go-sites",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "node build.mjs",
+    "db:generate": "drizzle-kit generate",
+    "test": "node --test test-sites.mjs"
+  },
+  "dependencies": { "drizzle-orm": "0.45.2" },
+  "devDependencies": { "drizzle-kit": "0.31.10", "esbuild": "0.25.12" }
+}

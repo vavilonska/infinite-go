@@ -4,40 +4,11 @@ import {
   joinRoom, applySetup, applyAction, consumeRate, byteLength,
 } from './room-state.js';
 
-export function json(status, data, headers = {}) {
-  return new Response(JSON.stringify(data), { status, headers: {
-    'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...headers,
-  } });
-}
-function errorResponse(error) {
-  return json(error.status || 503, {
-    error: error.status ? error.message : 'Cloud service is unavailable. Keep your local snapshot and try again later.',
-    ...(error.status ? error.details : { errorCode: 'CLOUD_UNAVAILABLE', recoverable: true }),
-  }, error.status === 429 ? { 'Retry-After': String(Math.ceil(error.details.retryAfterMs / 1000)) } : {});
-}
-export async function readJson(request) {
-  if ((request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== 'application/json') reject(415, 'Send application/json');
-  if (Number(request.headers.get('Content-Length')) > LIMITS.requestBytes) reject(413, 'Request body is too large');
-  if (!request.body) reject(400, 'Invalid JSON');
-  const reader = request.body.getReader();
-  const chunks = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > LIMITS.requestBytes) { await reader.cancel(); reject(413, 'Request body is too large'); }
-      chunks.push(value);
-    }
-  } finally { reader.releaseLock(); }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
-  catch { reject(400, 'Invalid JSON'); }
-}
+import { json, errorResponse, readJson } from './http.js';
+import { normalizeMatchOptions, tokenFromRequest } from './matchmaking.js';
+export { json, readJson } from './http.js';
+export { MatchmakingQueue } from './matchmaking.js';
+
 export function corsHeaders(request, env = {}) {
   const origin = request.headers.get('Origin');
   if (!origin) return {};
@@ -75,7 +46,22 @@ export default {
         if (method && !['GET', 'POST'].includes(method) || requested.some(value => !['authorization', 'content-type'].includes(value))) reject(403, 'Unsupported cross-origin request');
         return new Response(null, { status: 204, headers: cors });
       }
-      if (url.pathname === '/api/health' && request.method === 'GET') return withCors(json(200, { ok: true, mode: 'cloud', protocol: 1 }), cors);
+      if (url.pathname === '/api/health' && request.method === 'GET') return withCors(json(200, { ok: true, mode: 'cloud', protocol: 1, features: { matchmaking: Boolean(env.MATCHMAKING) } }), cors);
+      if (/^\/api\/matchmaking\/(start|status|cancel)$/.test(url.pathname)) {
+        if (!env.MATCHMAKING) reject(503, 'Matchmaking is not enabled on this backend', { errorCode: 'MATCHMAKING_UNAVAILABLE', recoverable: true });
+        const action = url.pathname.split('/').at(-1);
+        if (request.method !== (action === 'status' ? 'GET' : 'POST')) reject(405, 'Method not allowed');
+        if (request.headers.has('Upgrade')) reject(400, 'Matchmaking uses authenticated HTTP requests');
+        const token = tokenFromRequest(request);
+        const body = action === 'status' ? {} : await readJson(request);
+        fields(body, action === 'start' ? ['options'] : [], action === 'start' ? ['options'] : []);
+        const options = action === 'start' ? normalizeMatchOptions(body.options) : undefined;
+        const response = await env.MATCHMAKING.getByName('casual-v1').fetch(new Request(`https://matchmaking.internal/${action}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ...(options ? { options } : {}), bucket: await creationBucket(request) }),
+        }));
+        return withCors(response, cors);
+      }
       if (url.pathname === '/api/rooms' && request.method === 'POST') {
         const options = await readJson(request);
         // Validate before consuming a creation slot or allocating a room object.
@@ -153,6 +139,29 @@ export class GameRoom {
     try {
       const path = new URL(request.url).pathname;
       await this.ready;
+      if (path === '/create-match' && request.method === 'POST') {
+        fields(body, ['code', 'allocationId', 'options', 'tokens', 'createdAt'], ['code', 'allocationId', 'options', 'tokens', 'createdAt']);
+        if (!CODE_RE.test(body.code) || !/^[A-Za-z0-9_-]{43}$/.test(body.allocationId)) reject(400, 'Invalid allocation');
+        fields(body.tokens, ['A', 'B'], ['A', 'B']);
+        if (!['A', 'B'].every(seat => typeof body.tokens[seat] === 'string' && /^[A-Za-z0-9_-]{43}$/.test(body.tokens[seat])) || body.tokens.A === body.tokens.B) reject(400, 'Invalid allocation credentials');
+        if (!Number.isSafeInteger(body.createdAt) || body.createdAt > Date.now() || Date.now() >= body.createdAt + ROOM_TTL_MS) reject(400, 'Invalid allocation time');
+        if (body.options?.colorSetup !== 'nigiri') reject(400, 'Matched rooms require nigiri');
+        if (this.room) {
+          if (this.room.matchAllocation !== body.allocationId || this.room.code !== body.code
+            || this.room.tokens.A !== body.tokens.A || this.room.tokens.B !== body.tokens.B) reject(409, 'Room already exists');
+          await this.liveRoom();
+          return json(200, { ok: true });
+        }
+        const room = createRoom(body.code, body.options, body.createdAt);
+        room.tokens = body.tokens;
+        room.matchAllocation = body.allocationId;
+        room.revision = 1;
+        assertCapacity(room);
+        await this.ctx.storage.setAlarm(room.expiresAt);
+        await this.ctx.storage.put('room', room);
+        this.room = room;
+        return json(201, { ok: true });
+      }
       if (path === '/create' && request.method === 'POST') {
         fields(body, ['code', 'options'], ['code', 'options']);
         if (!CODE_RE.test(body.code)) reject(400, 'Invalid room code');
@@ -279,22 +288,36 @@ export class RoomCreationLimiter {
   async fetch(request) {
     try {
       const body = await readJson(request);
-      fields(body, ['bucket'], ['bucket']);
+      fields(body, ['bucket', 'allocationId'], ['bucket']);
+      if (body.allocationId !== undefined && (typeof body.allocationId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.allocationId))) reject(400, 'Invalid allocation');
       if (!Number.isInteger(body.bucket) || body.bucket < 0 || body.bucket >= 256) reject(400, 'Invalid bucket');
-      const result = this.serial.then(() => this.admit(body.bucket));
+      const result = this.serial.then(() => this.admit(body.bucket, body.allocationId));
       this.serial = result.catch(() => {});
       return await result;
     } catch (error) { return errorResponse(error); }
   }
-  async admit(bucket) {
+  async admit(bucket, allocationId) {
     try {
       await this.ready;
       const now = Date.now();
       // At most 257 small counters; reset the hourly buckets instead of retaining keys.
-      if (this.counts.hour !== Math.floor(now / 3_600_000)) this.counts = { day: this.counts.day, hour: Math.floor(now / 3_600_000) };
-      const next = structuredClone(this.counts);
+      const next = this.counts.hour !== Math.floor(now / 3_600_000)
+        ? { day: structuredClone(this.counts.day), hour: Math.floor(now / 3_600_000), ...(this.counts.allocations ? { allocations: structuredClone(this.counts.allocations) } : {}) }
+        : structuredClone(this.counts);
+      if (next.allocations) for (const [id, receipt] of Object.entries(next.allocations)) if (receipt.expiresAt <= now) delete next.allocations[id];
+      if (allocationId && next.allocations?.[allocationId]) {
+        if (next.allocations[allocationId].bucket !== bucket) reject(409, 'Allocation bucket changed');
+        return json(200, { ok: true });
+      }
       consumeRate(next, 'day', 100, now, ROOM_TTL_MS);
       consumeRate(next, `ip${bucket}`, 5, now, 3_600_000);
+      if (allocationId) {
+        // At most 200 receipts (100/day across a midnight boundary), each kept
+        // longer than the matchmaking claim's two-minute recovery window.
+        next.allocations ||= {};
+        if (Object.keys(next.allocations).length >= 200) reject(429, 'Creation receipts are full', { retryAfterMs: 600_000 });
+        next.allocations[allocationId] = { bucket, expiresAt: now + 600_000 };
+      }
       const nextDay = (Math.floor(now / ROOM_TTL_MS) + 1) * ROOM_TTL_MS;
       if (await this.ctx.storage.getAlarm() !== nextDay) await this.ctx.storage.setAlarm(nextDay);
       await this.ctx.storage.put('counts', next);
@@ -306,7 +329,13 @@ export class RoomCreationLimiter {
     const result = this.serial.then(async () => {
       await this.ready;
       // An old midnight alarm can be delivered after a new-day request.
-      if (this.counts.day?.window >= Math.floor(Date.now() / ROOM_TTL_MS)) return;
+      const now = Date.now();
+      if (this.counts.day?.window >= Math.floor(now / ROOM_TTL_MS)) {
+        await this.ctx.storage.setAlarm((Math.floor(now / ROOM_TTL_MS) + 1) * ROOM_TTL_MS);
+        return;
+      }
+      const receipts = Object.values(this.counts.allocations || {}).filter(receipt => receipt.expiresAt > now);
+      if (receipts.length) { await this.ctx.storage.setAlarm(Math.max(...receipts.map(receipt => receipt.expiresAt))); return; }
       this.counts = {};
       await this.ctx.storage.deleteAll();
       await this.ctx.storage.deleteAlarm();

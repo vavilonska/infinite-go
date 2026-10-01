@@ -8,11 +8,13 @@ const ENDPOINT = 'https://rooms.example';
 const CODE = 'ABCDEFGH2345';
 const TOKEN = 'a'.repeat(43);
 const NOW = 100_000;
+const HEALTH = { ok: true, mode: 'cloud', protocol: 1 };
+const POLLING_HEALTH = { ...HEALTH, transport: 'polling', features: { matchmaking: true } };
 const snapshot = (revision = 0) => ({ code: CODE, seat: 'A', role: 'B', revision,
   game: createGame(), setup: null, players: { B: true, W: false }, expiresAt: NOW + 86_400_000 });
 const response = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
 
-function harness(fetchOverride) {
+function harness(fetchOverride, health = HEALTH) {
   const timers = new Map(), sockets = [], requests = [], statuses = [], snapshots = [];
   let nextTimer = 0;
   class Socket {
@@ -24,7 +26,11 @@ function harness(fetchOverride) {
     disconnect(code = 1006) { this.onclose?.({ code }); }
   }
   const client = new RemoteRoomClient({ endpoint: ENDPOINT, WebSocketImpl: Socket,
-    fetchImpl: async (url, init) => { requests.push({ url, init }); return fetchOverride ? fetchOverride(url, init) : response({ ...snapshot(), token: TOKEN }); },
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      if (url.endsWith('/api/health')) return typeof health === 'function' ? health(url, init) : response(health);
+      return fetchOverride ? fetchOverride(url, init) : response({ ...snapshot(), token: TOKEN });
+    },
     setTimer: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; },
     clearTimer: id => timers.delete(id), now: () => NOW, random: () => .5,
     onStatus: status => statuses.push(status), onSnapshot: data => snapshots.push(data),
@@ -32,6 +38,7 @@ function harness(fetchOverride) {
   const run = id => { const timer = timers.get(id); assert.ok(timer); timers.delete(id); timer.fn(); };
   return { client, timers, sockets, requests, statuses, snapshots, run };
 }
+const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function storage() {
   const data = new Map();
@@ -67,10 +74,12 @@ test('tab credentials are scoped to exact endpoint and code and never reused for
 test('create has no existing token; REST auth stays in headers and websocket auth in the first message', async () => {
   const h = harness();
   await h.client.create({ size: 9 });
-  assert.equal(h.requests[0].url, ENDPOINT + '/api/rooms');
+  assert.equal(h.requests[0].url, ENDPOINT + '/api/health');
   assert.equal(h.requests[0].init.headers.Authorization, undefined);
   assert.equal(h.requests[0].init.credentials, 'omit');
   assert.equal(h.requests[0].init.redirect, 'error');
+  assert.equal(h.requests[1].url, ENDPOINT + '/api/rooms');
+  assert.equal(h.requests[1].init.headers.Authorization, undefined);
   h.client.start();
   const socket = h.sockets[0];
   assert.equal(socket.url, 'wss://rooms.example/api/rooms/' + CODE + '/events');
@@ -81,9 +90,9 @@ test('create has no existing token; REST auth stays in headers and websocket aut
   socket.message({ type: 'snapshot', snapshot: snapshot() });
   assert.equal(h.client.status, 'connected');
   await h.client.mutate('actions', { type: 'play', revision: 0 });
-  assert.equal(h.requests[1].init.headers.Authorization, 'Bearer ' + TOKEN);
-  assert.ok(!h.requests[1].url.includes(TOKEN));
-  assert.equal(h.requests[1].url, ENDPOINT + '/api/rooms/' + CODE + '/actions');
+  assert.equal(h.requests[2].init.headers.Authorization, 'Bearer ' + TOKEN);
+  assert.ok(!h.requests[2].url.includes(TOKEN));
+  assert.equal(h.requests[2].url, ENDPOINT + '/api/rooms/' + CODE + '/actions');
   h.client.close();
   assert.equal(h.timers.size, 0);
 });
@@ -102,7 +111,7 @@ test('default browser timers retain the global receiver across requests and conn
     timers.delete(id);
   });
   const client = new RemoteRoomClient({ endpoint: ENDPOINT, now: () => NOW,
-    fetchImpl: async () => response({ ...snapshot(), token: TOKEN }),
+    fetchImpl: async url => response(url.endsWith('/api/health') ? HEALTH : { ...snapshot(), token: TOKEN }),
     WebSocketImpl: class { close() {} },
   });
   await client.create({});
@@ -119,8 +128,10 @@ test('resume refuses credentials for another endpoint before any fetch', async (
   assert.equal(h.requests.length, 0);
   assert.throws(() => { h.client.endpoint = 'https://other.example'; }, TypeError);
   await h.client.resume({ endpoint: ENDPOINT, code: CODE, token: TOKEN });
-  assert.equal(h.requests[0].url, ENDPOINT + '/api/rooms/' + CODE);
-  assert.equal(h.requests[0].init.headers.Authorization, 'Bearer ' + TOKEN);
+  assert.equal(h.requests[0].url, ENDPOINT + '/api/health');
+  assert.equal(h.requests[0].init.headers.Authorization, undefined);
+  assert.equal(h.requests[1].url, ENDPOINT + '/api/rooms/' + CODE);
+  assert.equal(h.requests[1].init.headers.Authorization, 'Bearer ' + TOKEN);
   h.client.close();
 });
 
@@ -173,6 +184,7 @@ test('HTTP completion after leaving a room cannot create a session or open a soc
   let complete;
   const h = harness(() => new Promise(resolve => { complete = resolve; }));
   const creating = h.client.create({});
+  await flush();
   h.client.close(); complete(response({ ...snapshot(), token: TOKEN }));
   await assert.rejects(creating, /关闭/);
   assert.equal(h.client.room, null); assert.equal(h.sockets.length, 0); assert.equal(h.timers.size, 0);
@@ -194,5 +206,193 @@ test('lost action responses reconnect for a fresh snapshot and never automatical
   await h.client.create({}); h.client.start(); h.sockets[0].message({ type: 'snapshot', snapshot: snapshot() });
   await assert.rejects(h.client.mutate('actions', { type: 'play', revision: 0 }), /无法连接/);
   assert.equal(calls, 2); assert.equal(h.sockets.length, 2); assert.notEqual(h.client.status, 'connected');
+  h.client.close();
+});
+
+test('transport discovery is explicit, rejects incompatible health, and retains legacy WebSocket support', async () => {
+  const h = harness(undefined, POLLING_HEALTH);
+  assert.equal(h.requests.length, 0);
+  h.client.start(); h.client.reconnect();
+  assert.equal(h.requests.length, 0, 'A client without a selected room never makes background requests');
+  await assert.rejects(h.client.join('invalid'), /房间码/);
+  assert.equal(h.requests.length, 0);
+  await h.client.join(CODE);
+  assert.equal(h.client.transport, 'polling');
+  assert.deepEqual(h.requests.map(item => item.url), [ENDPOINT + '/api/health', ENDPOINT + '/api/rooms/' + CODE + '/join']);
+  h.client.close();
+
+  for (const health of [{ ...HEALTH, protocol: 2 }, { ...HEALTH, transport: 'unknown' }, { ...HEALTH, ok: false }]) {
+    const rejected = harness(undefined, health);
+    await assert.rejects(rejected.client.create({}), /协议不兼容/);
+    assert.equal(rejected.requests.length, 1, 'An incompatible service receives no room mutation');
+    assert.equal(rejected.client.room, null);
+    rejected.client.close();
+  }
+  const unavailable = harness(undefined, () => response({ error: 'unavailable' }, 503));
+  await assert.rejects(unavailable.client.create({}), /unavailable/);
+  assert.equal(unavailable.sockets.length, 0, 'Failed discovery does not fall back to a guessed transport');
+  unavailable.client.close();
+});
+
+test('polling requires its first authenticated snapshot and schedules one refresh at a time', async () => {
+  let complete;
+  const h = harness((url, init) => init.method === 'POST' ? response({ ...snapshot(), token: TOKEN }) :
+    new Promise(resolve => { complete = resolve; }), POLLING_HEALTH);
+  await h.client.create({});
+  h.client.start();
+  assert.equal(h.client.status, 'connecting');
+  assert.equal(h.sockets.length, 0);
+  const poll = h.requests.at(-1);
+  assert.equal(poll.url, ENDPOINT + '/api/rooms/' + CODE);
+  assert.equal(poll.init.headers.Authorization, 'Bearer ' + TOKEN);
+  assert.equal(poll.init.credentials, 'omit');
+  assert.equal(poll.init.redirect, 'error');
+  assert.equal(poll.init.cache, 'no-store');
+  assert.ok(!poll.url.includes(TOKEN));
+  await assert.rejects(h.client.mutate('actions', {}), /恢复远程连接/);
+  assert.equal(h.requests.filter(item => item.init.method === 'POST').length, 1);
+  complete(response(snapshot())); await flush();
+  assert.equal(h.client.status, 'connected');
+  assert.equal(h.snapshots.length, 1);
+  assert.equal(h.timers.get(h.client.pollTimer).delay, 4_000);
+  assert.equal(h.timers.size, 2, 'Only expiry and the next poll are scheduled');
+  h.run(h.client.pollTimer);
+  assert.equal(h.client.pollTimer, null, 'A slow response cannot overlap another scheduled poll');
+  complete(response(snapshot(1))); await flush();
+  assert.equal(h.snapshots.at(-1).revision, 1);
+  assert.equal(h.timers.size, 2);
+  h.client.close();
+  assert.equal(h.timers.size, 0);
+});
+
+test('polling preserves a newer action revision when an older in-flight snapshot completes', async () => {
+  let reads = 0, complete;
+  const h = harness((url, init) => {
+    if (url.endsWith('/actions')) return response(snapshot(2));
+    if (init.method === 'POST') return response({ ...snapshot(), token: TOKEN });
+    if (++reads === 1) return response(snapshot());
+    return new Promise(resolve => { complete = resolve; });
+  }, POLLING_HEALTH);
+  await h.client.create({}); h.client.start(); await flush();
+  h.run(h.client.pollTimer);
+  const action = await h.client.mutate('actions', { revision: 0, type: 'play' });
+  assert.equal(action.revision, 2);
+  complete(response(snapshot(1))); await flush();
+  assert.deepEqual(h.snapshots.map(data => data.revision), [0], 'The delayed poll cannot publish a stale game');
+  h.run(h.client.pollTimer); complete(response(snapshot(3))); await flush();
+  assert.deepEqual(h.snapshots.map(data => data.revision), [0, 3]);
+  h.client.close();
+});
+
+test('poll failures use bounded backoff, honor rate limits, and recover with a fresh snapshot', async () => {
+  let failure = true;
+  const h = harness((url, init) => init.method === 'POST' ? response({ ...snapshot(), token: TOKEN }) :
+    failure ? response({ error: 'busy' }, 503) : response(snapshot(1)), POLLING_HEALTH);
+  await h.client.create({}); h.client.start(); await flush();
+  assert.equal(h.statuses.at(-1).delay, 1_000);
+  for (let attempt = 1; attempt < 9; attempt++) {
+    h.run(h.client.retryTimer); await flush();
+    assert.equal(h.statuses.at(-1).delay, Math.min(30_000, 1_000 * 2 ** attempt));
+    assert.equal(h.client.pollTimer, null);
+    assert.equal(h.timers.size, 2);
+  }
+  failure = false; h.run(h.client.retryTimer); await flush();
+  assert.equal(h.client.status, 'connected');
+  assert.equal(h.client.attempt, 0);
+  h.client.close();
+
+  for (const [retryAfterMs, delay] of [[12_000, 12_000], [60_000, 30_000]]) {
+    const limited = harness((url, init) => init.method === 'POST' ? response({ ...snapshot(), token: TOKEN }) :
+      response({ error: 'rate limited', retryAfterMs }, 429), POLLING_HEALTH);
+    await limited.client.create({}); limited.client.start(); await flush();
+    assert.equal(limited.statuses.at(-1).delay, delay);
+    limited.client.close();
+  }
+});
+
+test('offline, pause, repeated reconnect, and close invalidate in-flight polls and cannot spawn duplicate loops', async () => {
+  const pending = [];
+  const h = harness((url, init) => init.method === 'POST' ? response({ ...snapshot(), token: TOKEN }) :
+    new Promise(resolve => pending.push({ resolve, signal: init.signal })), POLLING_HEALTH);
+  await h.client.create({}); h.client.start();
+  h.client.setOnline(false);
+  assert.equal(pending[0].signal.aborted, true);
+  pending[0].resolve(response(snapshot(50))); await flush();
+  assert.equal(h.client.status, 'offline');
+  assert.equal(h.snapshots.length, 0); assert.equal(h.client.pollTimer, null);
+  h.client.reconnect(); assert.equal(pending.length, 1);
+  h.client.setOnline(true); assert.equal(pending.length, 2);
+  h.client.setPaused(true);
+  assert.equal(pending[1].signal.aborted, true);
+  pending[1].resolve(response(snapshot(51))); await flush();
+  assert.equal(h.client.status, 'paused');
+  h.client.setOnline(false); h.client.setOnline(true); h.client.reconnect();
+  assert.equal(pending.length, 2, 'Coming online while paused does not restart requests');
+  h.client.setPaused(false); assert.equal(pending.length, 3);
+  h.client.reconnect(); assert.equal(pending.length, 4);
+  assert.equal(pending[2].signal.aborted, true);
+  pending[3].resolve(response(snapshot(2))); await flush();
+  pending[2].resolve(response(snapshot(99))); await flush();
+  assert.equal(h.client.status, 'connected');
+  assert.deepEqual(h.snapshots.map(data => data.revision), [2]);
+  assert.equal(h.timers.size, 2);
+  h.run(h.client.pollTimer); assert.equal(pending.length, 5);
+  h.client.close();
+  assert.equal(pending[4].signal.aborted, true);
+  pending[4].resolve(response(snapshot(100))); await flush();
+  h.client.setOnline(true); h.client.setPaused(false); h.client.reconnect();
+  assert.equal(pending.length, 5); assert.equal(h.snapshots.length, 1); assert.equal(h.timers.size, 0);
+});
+
+test('polling resume and matchmaking adoption negotiate the same endpoint without sending a health token', async () => {
+  const resumed = harness(undefined, POLLING_HEALTH);
+  await resumed.client.resume({ endpoint: ENDPOINT, code: CODE, token: TOKEN });
+  assert.equal(resumed.client.transport, 'polling');
+  assert.equal(resumed.requests[0].init.headers.Authorization, undefined);
+  assert.equal(resumed.requests[1].init.headers.Authorization, 'Bearer ' + TOKEN);
+  resumed.client.start(); await flush();
+  assert.equal(resumed.client.status, 'connected'); assert.equal(resumed.sockets.length, 0);
+  resumed.client.close();
+
+  const matched = harness(undefined, POLLING_HEALTH);
+  matched.client.adopt({ ...snapshot(), token: TOKEN });
+  assert.equal(matched.requests.length, 0);
+  matched.client.start(); matched.client.start();
+  await flush();
+  assert.equal(matched.requests.filter(item => item.url.endsWith('/api/health')).length, 1);
+  assert.equal(matched.requests.filter(item => item.url.endsWith('/api/rooms/' + CODE)).length, 1);
+  assert.equal(matched.client.status, 'connected'); assert.equal(matched.sockets.length, 0);
+  matched.client.close();
+});
+
+test('invalid poll credentials, missing rooms, and expiry stop polling permanently', async () => {
+  for (const status of [401, 403, 404, 410]) {
+    const h = harness((url, init) => init.method === 'POST' ? response({ ...snapshot(), token: TOKEN }) :
+      response({ error: 'room unavailable' }, status), POLLING_HEALTH);
+    await h.client.create({}); h.client.start(); await flush();
+    assert.equal(h.client.status, 'ended'); assert.equal(h.timers.size, 0);
+    h.client.reconnect(); assert.equal(h.requests.length, 3);
+  }
+  const expired = harness(undefined, POLLING_HEALTH);
+  await expired.client.create({}); expired.client.start(); await flush();
+  expired.run(expired.client.expiryTimer);
+  assert.equal(expired.client.status, 'ended'); assert.equal(expired.timers.size, 0);
+  assert.equal(expired.snapshots.length, 1, 'Expiry keeps the last authoritative game available');
+});
+
+test('a lost polling action response refreshes once and never automatically replays the mutation', async () => {
+  let mutations = 0, reads = 0;
+  const h = harness((url, init) => {
+    if (url.endsWith('/actions')) { mutations++; throw new TypeError('Lost response'); }
+    if (init.method === 'POST') return response({ ...snapshot(), token: TOKEN });
+    return response(snapshot(reads++));
+  }, POLLING_HEALTH);
+  await h.client.create({}); h.client.start(); await flush();
+  await assert.rejects(h.client.mutate('actions', { type: 'play', revision: 0 }), /无法连接/);
+  await flush();
+  assert.equal(mutations, 1); assert.equal(reads, 2);
+  assert.equal(h.client.status, 'connected');
+  assert.equal(h.snapshots.at(-1).revision, 1);
+  assert.equal(h.timers.size, 2);
   h.client.close();
 });

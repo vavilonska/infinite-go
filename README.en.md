@@ -10,7 +10,7 @@ Real gameplay example: one history branches into three timelines weighted 1/4, 1
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), open source under GNU AGPL v3 only (AGPL-3.0-only).
 
-> v0.1 prototype: same-screen play, trusted-LAN rooms and optional self-hosted AI. No public matchmaking, player accounts or bundled AI model. Basic desktop interactions have been checked on the live site; real phones and two-device Wi-Fi still need device testing. See [verification notes](docs/TESTING.md).
+> v0.1 prototype: same-screen play, trusted-LAN rooms and optional self-hosted AI. Friend rooms and optional anonymous casual matchmaking; no player accounts or bundled AI model. Basic desktop interactions have been checked on the live site; real phones and two-device Wi-Fi still need device testing. See [verification notes](docs/TESTING.md).
 
 ## Downloads and mobile
 
@@ -22,9 +22,17 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 Players provide their own LAN, virtual-LAN and AI backends. For games with friends, open the same frontend served by the host's Node server directly. Do not assume a public HTTPS page can connect to an HTTP LAN backend.
 
-## Optional Internet friend rooms
+## Online and static editions
 
-The default Cloudflare Workers Free + SQLite Durable Objects friend-room service is deployed and verified. Both players open the online page and select the default service; the host creates a room and shares its private code. No backend URL entry is needed. You can also select a custom service; see [free deployment and data boundaries](docs/CLOUDFLARE.md). Offline/LAN play remains available. Explicit hosting limits reject operations without changing unlimited game rules. Rooms expire after 24 hours; export first.
+GitHub Pages remains the static edition: same-screen play, saved games, LAN host-address navigation and explicitly configured self-hosted AI/room providers. It does not connect to a public backend by default. The public online entrance is paused while its address is updated. Both editions share the same rules and interface; the static entrance does not silently connect to the online API.
+
+There are no player accounts, rankings or chat. Share room codes privately and export before expiry. Capacity limits are explicit; see [matchmaking and verification](docs/MATCHMAKING.md).
+
+## Choose a mode first
+
+The home screen offers same-screen, AI, LAN, remote friends and remote matchmaking. Each opens focused setup; the board takes priority during play, with advanced rules and help collapsible. Returning to the menu preserves the current game; export before leaving.
+
+[Casual matchmaking](docs/MATCHMAKING.md) pairs identical settings without ranking or chat. The UI checks advertised backend capabilities and reports an unavailable service instead of claiming matchmaking is live.
 
 ## Start playing
 

@@ -22,3 +22,5 @@ android/build/
 
 .wrangler/
 cloud/dist/
+sites/dist/
+sites/.openai/

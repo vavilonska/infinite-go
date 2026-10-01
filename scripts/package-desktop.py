@@ -14,7 +14,7 @@ if ext=='zip':
 else:
  with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as t:node=t.extractfile(prefix+'/'+binary).read();license=t.extractfile(prefix+'/LICENSE').read()
 exe=stage/'runtime'/('node.exe' if args.platform=='win' else 'node');exe.write_bytes(node);exe.chmod(0o755);(stage/'runtime'/'NODE-LICENSE').write_bytes(license)
-files=['index.html','style.css','app.js','engine.js','annotations.js','tree.js','ai.js','providers.js','nigiri.js','host-address.js','remote-room.js','remote-config.js','deployment.js','manifest.webmanifest','server.js','package.json','LICENSE','NOTICE','README.md','README.en.md','katago-bridge.js','katago-analysis.cfg']
+files=['index.html','style.css','app.js','engine.js','annotations.js','tree.js','ai.js','providers.js','nigiri.js','host-address.js','remote-room.js','remote-config.js','matchmaking-client.js','deployment.js','manifest.webmanifest','server.js','package.json','LICENSE','NOTICE','README.md','README.en.md','katago-bridge.js','katago-analysis.cfg']
 for name_ in files:shutil.copy2(root/name_,stage/'app'/name_)
 for directory in ['assets','docs','local-ai']:shutil.copytree(root/directory,stage/'app'/directory,dirs_exist_ok=True)
 shutil.copy2(root/'packaging'/'launcher.mjs',stage/'launcher.mjs');shutil.copy2(root/'LICENSE',stage/'LICENSE');shutil.copy2(root/'NOTICE',stage/'NOTICE')

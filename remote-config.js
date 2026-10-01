@@ -1,2 +1,5 @@
-// Set only after deploying and verifying your HTTPS friend-room Worker.
-export const DEFAULT_REMOTE_ENDPOINT = "https://infinite-go-rooms.infinite-go.workers.dev";
+// GitHub Pages is the static edition. Self-hosted services are an explicit choice.
+// The Sites deployment supplies its own verified same-origin API in its build.
+export const DEFAULT_REMOTE_ENDPOINT = "";
+// Public online entrance paused while a neutral address is prepared.
+export const ONLINE_PLAY_URL = "";

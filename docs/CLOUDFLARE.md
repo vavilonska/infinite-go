@@ -1,10 +1,8 @@
 # Cloudflare 免费熟人房间 / Free friend rooms
 
-这是独立于 LAN Node 服务的可选 HTTPS 后端。前端仍在 GitHub Pages，双方用浏览器打开同一网页，选择远程模式和默认朋友房间服务；房主创建房间并私下分享房间码，朋友输入后加入。默认入口不显示后端网址；选择“自定义服务”后才显示 HTTPS 地址输入框，双方需填写同一个已部署的服务地址。无需安装 App、VPN 或玩家账号。没有公共大厅、随机匹配、聊天或托管 AI。
+这是保留的可选自托管 / 后备适配器，不是 GitHub Pages 的默认公共服务。静态版不预填 Cloudflare 地址；主要在线联机入口由 Sites 版本提供。不要将此部署教程误认为用户必须配置 Cloudflare 才能使用在线版。
 
-**默认朋友房间服务已于 2026-10-01 部署并验证，使用 Workers Free 与 SQLite Durable Objects。** [在线游戏](https://vavilonska.github.io/infinite-go/) · [后端健康检查](https://infinite-go-rooms.infinite-go.workers.dev/api/health)。已通过真实 HTTP/WebSocket smoke，以及同一电脑 Chrome 和内置浏览器的双会话落子、同步、分叉、刷新恢复与棋局导出验证；尚不代表手机或跨网络真机均已验证。已发布 v0.2.2 Android APK 不包含这次入口；手机先用系统浏览器打开 Pages。旧 APK 的离线和房主地址加入功能不受影响。
-
-旧页面若仍显示“默认服务尚未部署”或连接时停住，请先导出已有对局，再强制刷新（桌面浏览器通常为 Ctrl+Shift+R）。不要为更新页面清除游戏数据。
+Cloudflare 适配器继续复用同一个围棋引擎、朋友房间和可选匹配协议。仅在你明确选择自行部署时使用以下步骤；不修改或删除既有服务，不自动购买或升级。旧版发行 APK 仍可离线或加入房主地址。
 
 ## 数据与边界
 
@@ -36,16 +34,16 @@ npx wrangler@4.145.0 deploy --config cloud/wrangler.jsonc
 
 配置使用 `new_sqlite_classes` migration，不能改成旧 KV Durable Object。默认允许的网页 origin 是 `https://vavilonska.github.io`；若托管另一个前端，按配置添加它的准确 origin，不用 `*`。房间 API 不接收 Cookie，重连凭据通过 Authorization 或 WebSocket 的首条认证消息传递，不放 URL。
 
-部署命令返回真实 `https://…workers.dev` 地址后，先验证 `/api/health` 返回 `mode: "cloud"` 和 `protocol: 1`。在两份相互独立的浏览器会话中填写这个地址，创建 / 加入房间、交替落子、刷新后点击恢复连接、确认双方看到相同版本。确认非法颜色和旧版本动作被拒绝，并保留 JSON 导出测试。只有完成这些步骤后，才可把实际 origin 写入 `remote-config.js` 的 `DEFAULT_REMOTE_ENDPOINT` 并发布 Pages。
+部署命令返回真实 `https://…workers.dev` 地址后，先验证 `/api/health` 返回 `mode: "cloud"` 和 `protocol: 1`。在两份相互独立的浏览器会话中填写这个地址，创建 / 加入房间、交替落子、刷新后点击恢复连接、确认双方看到相同版本。确认非法颜色和旧版本动作被拒绝，并保留 JSON 导出测试。只有完成这些步骤后，才可在自己的部署副本配置实际 origin。项目公共 GitHub Pages 保持静态版，不默认指向此后备服务。
 
 仓库不包含 Cloudflare 账户 ID、token、认证缓存或付费配置。没有 GitHub → Cloudflare 自动部署绑定；开源使用者可以在自己的账户重复上述步骤。
 
 ## English
 
-This optional HTTPS Worker backend reuses the authoritative game engine. Two friends use the Pages frontend, select the default friend-room service, then create/join using a private room code. The default interface hides the backend URL; selecting the custom service option reveals the HTTPS address field. No app, VPN, player accounts, matchmaking, chat or hosted AI is required. The default Workers Free service was deployed and verified on 2026-10-01 with a live HTTP/WebSocket smoke test and two browser sessions on one computer, including moves, synchronization, branching, refresh recovery and game export. Mobile devices and separate networks have not been verified. The existing v0.2.2 APK does not include this new entrance; use a mobile browser for now. If an older offline cache still shows an undeployed service or a stuck connection, export your game before a hard refresh; do not clear game data.
+This is an optional self-hosted/backup adapter, not the default public service on GitHub Pages. The static edition does not prefill a Cloudflare endpoint; the primary online edition is hosted separately on Sites. Follow these steps only when explicitly choosing your own Cloudflare deployment. Existing services are not automatically removed, upgraded or changed.
 
 Rooms expire 24 hours after creation. Export before expiry or an outage. Credentials are scoped to the endpoint and room in the current tab's sessionStorage, never put into share URLs or game exports. The operator can access game/setup data, so use a trusted service. Whoever first claims the second seat owns it; share codes privately.
 
 Use Workers Free with SQLite Durable Objects and WebSocket hibernation. Free quotas can fail closed; do not upgrade or add payment information to continue play. Public-service abuse can exhaust quotas. Explicit technical state/rate/complexity limits reject operations atomically and preserve the current game for export; they are not a silent change to unlimited branching.
 
-The account owner runs the commands above and personally approves Wrangler login on their computer. Never share tokens or auth caches. Confirm the Free plan before deploying. Use the actual returned workers.dev origin, check `/api/health`, and verify two independent browser clients, legal/illegal moves, reconnect and export before setting `DEFAULT_REMOTE_ENDPOINT`. Keep CORS origins exact. No automatic GitHub account binding or paid resources are configured.
+The account owner runs the commands above and personally approves Wrangler login on their computer. Never share tokens or auth caches. Confirm the Free plan before deploying. Use the actual returned workers.dev origin, check `/api/health`, and verify two independent browser clients, legal/illegal moves, reconnect and export before configuring your own deployment copy. Public GitHub Pages remains static. Keep CORS origins exact. No automatic GitHub account binding or paid resources are configured.

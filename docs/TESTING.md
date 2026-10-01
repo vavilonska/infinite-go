@@ -40,4 +40,12 @@ The deployed pruning update was additionally checked in the cloud desktop browse
 
 The source includes a Workers Free / SQLite Durable Object adapter. The full Node suite passes 107 tests, including server-authoritative room actions, simultaneous seat claims and same-version writes, concealed nigiri, storage failure rollback, expiry, resource/rate limits, hibernation state and origin-locked remote client reconnect behavior.
 
-A local official Cloudflare workerd runtime was exercised with two independent Node HTTP/WebSocket clients: create/join, alternating moves, server rejection of wrong-color and stale actions, exactly one successful concurrent same-version write, pushed snapshots and credential-based reconnect passed. This is a local runtime integration test, not proof of public Cloudflare deployment or two physical phones. The cloud browser blocks localhost access, so local pixel QA was unavailable. The default remote endpoint remains empty until an operator deploys and verifies it; use the deployment checklist in [CLOUDFLARE.md](CLOUDFLARE.md).
+A local official Cloudflare workerd runtime was exercised with two independent Node HTTP/WebSocket clients: create/join, alternating moves, server rejection of wrong-color and stale actions, exactly one successful concurrent same-version write, pushed snapshots and credential-based reconnect passed. This is a local runtime integration test, not proof of public Cloudflare deployment or two physical phones. The cloud browser blocks localhost access, so local pixel QA was unavailable. The GitHub static edition keeps its default remote endpoint empty. The Cloudflare adapter is now optional backup; the separate Sites edition uses its own API.
+
+## Mode menu, matchmaking and native Sites edition
+
+The final shared source suite passes 144 tests, including the original rules, Cloudflare adapter, exact-rule matchmaking, scoped/cancellable client tickets, capability-selected HTTP polling and four native SQLite concurrency tests. The native online-edition build and static artifact build both complete. The app DOM harness exercises all five modes, local move/back/resume, settings retention and an old backend's disabled matchmaking state.
+
+The pre-existing public friend service was separately exercised from two cloud-browser tabs: create/join, Black D4 and White F6 synchronized both ways. A standalone Node WebSocket smoke timed out in this cloud environment, so it is not used as evidence against that successful browser check.
+
+The Sites backend has separate deployment and live API verification. GitHub Pages carries no default public API; its online link opens the Sites edition. Physical phones, independent real networks and installed Android updates are not implied by these checks.

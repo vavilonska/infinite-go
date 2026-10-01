@@ -1,8 +1,8 @@
 # GitHub Pages static frontend
 
-The Pages artifact contains only the HTML, CSS, frontend ES modules, LICENSE and NOTICE. It does not contain or run `server.js`, the KataGo bridge, models, binaries, accounts, room persistence or credentials. The app defaults to same-screen human play. AI is disconnected and its dependent modes are disabled until the user connects a compatible service.
+The Pages artifact contains only the HTML, CSS, frontend ES modules, LICENSE and NOTICE. It does not contain or run `server.js`, the KataGo bridge, models, binaries, accounts, room persistence or credentials. The app opens a mode menu. Same-screen human play is fully local. AI is disconnected and its dependent modes are disabled until the user connects a compatible service.
 
-All frontend module/style links are relative, so the app works beneath a project prefix such as `/infinite-go/`. The build writes `deployment.js` with `STATIC_HOST = true`; local Node hosting keeps it false. Static mode disables same-origin LAN APIs. The separate optional HTTPS remote-room entrance requires an explicitly configured service; it does not send credentials until the player connects or resumes. See [Cloudflare friend rooms](CLOUDFLARE.md).
+All frontend module/style links are relative, so the app works beneath a project prefix such as `/infinite-go/`. The build writes `deployment.js` with `STATIC_HOST = true`; local Node hosting keeps it false. Static mode disables same-origin LAN APIs. GitHub Pages has no default public API. The remote mode cards link to the verified Sites online edition when available; optional custom HTTPS providers remain an explicit choice. No room credentials are sent until the player connects or resumes. See [online matching](MATCHMAKING.md).
 
 ## Repository deployment
 
@@ -32,3 +32,9 @@ For local KataGo, open the locally served Node page on the same computer as the 
 An advanced user may explicitly connect their own HTTPS provider from the static page. It must implement the [provider contract](providers.md), allow the exact frontend origin through CORS, and handle its own operational/access controls. Complete selected game histories are sent to that provider. Do not put credentials in the URL, frontend code or public repository.
 
 A public HTTPS page cannot be assumed to reach an HTTP/WS LAN endpoint: mixed-content checks, local-network permission policies and CORS can block it. This app intentionally directs local users to the host-served page instead. Do not disable browser security, broadly authorize an unrelated origin, or expose a bare game/AI endpoint to the public Internet.
+
+## Shared frontend, distinct editions
+
+`remote-config.js` keeps `DEFAULT_REMOTE_ENDPOINT` empty for the repository/static edition. `ONLINE_PLAY_URL` contains only the verified public online-edition page URL; it is a navigation link, not a hidden API default. The Sites deployment configures its own same-origin backend in its build copy. It shares the frontend and engine with this repository. Public Pages users can stay offline, open a LAN host or intentionally choose a custom provider.
+
+A waiting service-worker update never forcibly reloads an active game. Export first, close all tabs for that site, then reopen to receive the new version. The menu reports an available update when detected.

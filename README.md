@@ -10,7 +10,7 @@
 
 A local-first Go experiment with branching histories and exact weighted outcomes. By [vavilonska](https://github.com/vavilonska), Open source under GNU AGPL v3 only (AGPL-3.0-only).
 
-> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。不是公网对战平台，没有玩家账号或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
+> v0.1 prototype: 同屏双人 + 可信局域网房间 + 可选自托管 AI。支持朋友房间与可选匿名休闲匹配，没有玩家账号或内置 AI 模型。已完成线上桌面基础交互检查；真实手机 / Wi-Fi 兼容性仍需设备验收，详见 [验证记录](docs/TESTING.md)。
 
 ## 下载与手机
 
@@ -22,9 +22,17 @@ A local-first Go experiment with branching histories and exact weighted outcomes
 
 局域网、虚拟局域网和 AI 后端由使用者自行提供。熟人联机请优先直接打开房主 Node 服务所提供的同套页面；不要假设公开 HTTPS 页面能直接连接 HTTP 局域网后端。
 
-## 可选公网熟人房间
+## 在线联机版与静态版
 
-Cloudflare Workers Free + SQLite Durable Objects 默认朋友房间服务已部署并验证。双方打开在线页面，选择默认服务，由房主创建并私下分享房间码；无需填写后端网址。也可选择自定义服务，按[免费部署与数据说明](docs/CLOUDFLARE.md)配置自己的后端。同屏 / LAN 仍然可用。容量上限会明确拒绝操作，不改变“不限制”棋规；房间固定 24 小时到期，请导出保存。
+GitHub Pages 保持静态版本：同屏、存档、局域网房主地址跳转，以及主动配置的自托管 AI / 房间服务。它不默认连接公共后端。在线联机版地址更新中，公开入口已暂停。两个站点共享同一套棋规和界面，静态版入口不会自动连接在线 API。
+
+在线模式没有玩家账号、排名或聊天。请只分享房间码，提前导出对局；服务有明确容量与到期限制。部署与当前验证状态见 [匹配说明](docs/MATCHMAKING.md)。
+
+## 先选玩法，再开始
+
+首页提供同屏、AI、局域网、远程朋友和远程匹配五个入口；进入后仅展示对应设置，开局后以棋盘为主，高级棋规与帮助可展开。返回玩法不应丢失当前棋局，结束前仍需导出。
+
+[匿名休闲匹配](docs/MATCHMAKING.md)只匹配相同棋规，不做排名或聊天。页面会检查后端能力，未部署时明确提示，不把等待或旧健康检查当作匹配上线。
 
 ## 开始玩
 
