@@ -15,6 +15,10 @@ npm --prefix sites test
 npm --prefix sites run build
 ```
 
+`drizzle-kit` 的旧 `@esbuild-kit/esm-loader` → `core-utils` 依赖链仍请求 esbuild 0.18，受 GHSA-67mh-4wv8-2f99 影响。`package.json` 仅对 `core-utils` 的 esbuild 使用 override，复用直接依赖的安全版本 0.25.12（修复起点为 0.25.0），不升级其余工具。更新此 override 时除正常 build/test 外，必须在隔离副本的 `sites` 目录运行 `npm run db:generate`，实际加载 TypeScript 配置与 schema 并生成迁移；该命令无数据库凭据，不连接生产 DB，但可能写入副本的 `drizzle/`。安装成功本身不证明跨版本 API 兼容。
+
+2026-10-13：Node.js 24.18.0 下 `npm ci --prefix sites`、7 项 Sites 测试及 build 通过，实际依赖树中 `core-utils` 使用 esbuild 0.25.12，tsx 保持自己的 0.28.2；audit 无漏洞。隔离副本的 `npm run db:generate` 成功读取配置及 schema（无 schema 变更），另用 `node --loader @esbuild-kit/esm-loader --input-type=module -e "await import('./db/schema.ts')"` 实际经过旧 loader/core-utils 编译 TypeScript 成功。此 loader 在 Node 24 输出 experimental/globalPreload 弃用提示，但没有编译失败；没有连接、push 或 migrate 生产数据库。
+
 Output is `sites/dist/client` (shared frontend) and `sites/dist/server` (Worker). Only the online build sets `DEFAULT_REMOTE_ENDPOINT` to the page's own origin. The repository's `remote-config.js` remains empty for the static edition and contains an explicit online-edition navigation link.
 
 A hosting deployment must supply the `ASSETS` static binding and `DB` D1 binding, apply the SQL migration from `drizzle/`, and publish both together. The generated database ID is a placeholder, not an account identifier or credential. Each owner supplies their own registration metadata and bindings through their host; private `.openai` registration files are excluded from version control. Building locally does not deploy or change a cloud account.

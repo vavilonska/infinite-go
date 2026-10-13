@@ -1,5 +1,5 @@
-import * as tf from '@tensorflow/tfjs';
-import '@tensorflow/tfjs-backend-wasm';import '@tensorflow/tfjs-backend-webgpu';
+import * as tf from '@tensorflow/tfjs-core';
+import '@tensorflow/tfjs-backend-cpu';import '@tensorflow/tfjs-backend-wasm';import '@tensorflow/tfjs-backend-webgpu';
 import {setWasmPaths,setThreadsCount} from '@tensorflow/tfjs-backend-wasm';import pako from 'pako';
 import {parseKataGoModelV8} from './vendor/engine/katago/loadModelV8';
 import {KataGoModelV8Tf} from './vendor/engine/katago/modelV8';

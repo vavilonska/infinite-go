@@ -19,6 +19,8 @@ npm start
 
 搜索实现取自 [Web KatRain 固定版本](https://github.com/Sir-Teo/web-katrain/tree/8dd813aeb565cbdad5215dc75204fc40fd519c50)，MIT 许可，保留在 `browser-ai/UPSTREAM-LICENSE`。这是 TensorFlow.js + TypeScript 重写的 MCTS，**不是原版 C++ KataGo**。适配器将其中国规则预设改为位置超级劫、禁止自杀、无让子补偿，继承全部历史局面；争议续弈清除连续停手计数但保留超级劫历史。正式落子仍由 Infinite Go 棋规再次验证。
 
+运行时固定使用同版 `@tensorflow/tfjs-core` 与显式注册的 CPU、WASM、WebGPU 后端；模型模块显式注册 chained ops，保留 `tensor.add/mul/reshape` 等方法。只依赖张量运算，不使用 layers/data/converter 或 TensorFlow.js 自定义模块 CLI。避免引入总包 `@tensorflow/tfjs` 的未用 CLI 依赖链 `argparse` → `sprintf-js`；后者的 GHSA-hp3w-g68c-fv3c 截至 2026-10-13 尚无已发布修复版。CPU 后端仍保留，模型和搜索算法不因此改变。
+
 - 测试小模型：3,827,339字节（约3.65 MiB），弱模型，适合先验证兼容性；可从固定 GitHub 源直接下载
 - b10：11,138,361字节（约10.62 MiB），较轻量旧模型
 - b18：97,898,094字节（约93.36 MiB），较大，建议桌面先试；手机可能内存不足
@@ -31,7 +33,7 @@ b10/b18官方源未声明浏览器跨域读取权限，首次使用请通过界�
 - 每条线搜索时间预算：100至20,000毫秒；默认3,000。单次神经网络计算不能中途切断，所以不是严格墙钟上限
 - 推理批量：1至4，默认1；搜索最大子节点：8至64，默认32
 - WASM线程：1/2/4；只有跨源隔离且支持共享内存时才能选多线程。普通 Pages 单线程，不修改安全设置
-- 后端：WASM、设备支持时的WebGPU或较慢的JS CPU。当前实测是单线程WASM，未测物理手机/WebGPU
+- 后端：WASM、设备支持时的WebGPU或较慢的JS CPU。2026-10-13 已在桌面 Chromium 实测 CPU、单线程 WASM 和 WebGPU（NVIDIA Lovelace）；未测物理手机，不能视作任意设备保证
 - 浏览器引擎同一时刻只分析一条分支；HTTP并发只有服务明确支持时才最多2条
 - 棋盘、规则、贴目由游戏传入，不能通过AI高级参数改写。参数变更需重新启用模型；这会取消旧分析和重载模型，不重置对局
 
@@ -59,6 +61,20 @@ RSS是分析结束后的进程采样，包括测试运行时；不是精确峰�
 
 实际小模型还通过了浏览器provider/界面控制器的人机与机机流程：AI只走自己的颜色、两条时间线按当轮资格行动、切换查看不造成错线、连续4手机机交替、暂停/取消、旧请求不回放、人人模式禁止代走。这是在**Node Worker传输适配环境**运行真实WASM模型，并非真实手机或桌面浏览器端到端测试；本批没有发布页面以进行生产测试。
 
+## 2026-10-13 桌面浏览器依赖切换验收
+
+在 Node.js 24.18.0 / Windows 本地生产入口 `npm start`（仅绑定 loopback），真实 Chromium Worker 下载并核验固定 tiny 模型，使用 9 路两手历史、16 visits、单线程，分别通过 CPU、WASM 和 WebGPU 的分析与合法落子。三个后端均返回原 `requestId` / `nodeId`，推荐落子均为索引 50，并通过 Infinite Go 棋规应用校验；CPU/WASM 的待执行请求取消均返回 `AbortError` 且清空队列。这覆盖 core 的 chained ops、kernel 与后端注册，并非 mock 或仅构建验证。
+
+| 后端 | 黑胜率 | 分析 + 落子耗时 |
+|---|---:|---:|
+| JS CPU | 49.1756% | 6.543s |
+| 单线程 WASM | 49.1756% | 0.372s |
+| WebGPU（NVIDIA Lovelace） | 49.1756% | 1.544s |
+
+耗时是同一次浏览器内分析与落子测量，不含模型加载，不是性能基准。生产 AI 设置界面实际启用 WASM tiny 模型并截图。普通 localhost 未跨源隔离，因此本轮不测试多线程 WASM；物理手机、其他 GPU、较大模型仍未覆盖。
+
+`npm ci --prefix browser-ai --ignore-scripts`、运行时构建、176 项根测试及浏览器依赖 audit 均通过；audit 无漏洞。Sites 的独立检查和隔离 TypeScript 加载验证见 `sites/README.md`。
+
 ## English
 
-The optional browser provider uses a pinned MIT TypeScript search rewrite with TensorFlow.js, not native C++ KataGo. Models are separate, hash-verified downloads/imports. The actual tiny/b10/b18 models were exercised on 9/13/19 with single-thread WASM in Node and compared to native KataGo at low visits. The provider/controller real-model tests used a Node Worker transport shim. Physical-browser, mobile and WebGPU validation remain outstanding; do not interpret these measurements as mobile performance or native-search equivalence.
+The optional browser provider uses a pinned MIT TypeScript search rewrite with TensorFlow.js, not native C++ KataGo. Models are separate, hash-verified downloads/imports. The actual tiny/b10/b18 models were exercised on 9/13/19 with single-thread WASM in Node and compared to native KataGo at low visits. The older provider/controller tests used a Node Worker transport shim. On 2026-10-13 the pinned tiny model also passed real desktop Chromium Worker analysis and legal moves on CPU, single-thread WASM and NVIDIA Lovelace WebGPU, including request identity and CPU/WASM cancellation checks. Physical mobile devices, other GPUs and browser runs of larger models remain unverified; these results do not establish mobile performance or native-search equivalence.

@@ -1,5 +1,5 @@
 import { historyFeaturesV7 } from './historyV7';
-import * as tf from '@tensorflow/tfjs';
+import * as tf from '@tensorflow/tfjs-core';
 import type { BoardState, FloatArray, GameRules, Move, Player, RegionOfInterest } from '../../types';
 import { getAnimationNow } from '../../utils/animationFrame';
 import { formatGtpMove } from '../../lib/gtp';

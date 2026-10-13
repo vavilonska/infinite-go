@@ -10,5 +10,6 @@
     "test": "node --test test-sites.mjs"
   },
   "dependencies": { "drizzle-orm": "0.45.2" },
-  "devDependencies": { "drizzle-kit": "0.31.10", "esbuild": "0.25.12" }
+  "devDependencies": { "drizzle-kit": "0.31.10", "esbuild": "0.25.12" },
+  "overrides": { "@esbuild-kit/core-utils": { "esbuild": "$esbuild" } }
 }
